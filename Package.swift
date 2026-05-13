@@ -18,6 +18,10 @@ let package = Package(
             name: "Orchestra",
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm")
+            ],
+            resources: [
+                .copy("Resources/AppIcon.png"),
+                .copy("Resources/AppIcon.svg")
             ]
         ),
         .testTarget(

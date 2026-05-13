@@ -11,6 +11,16 @@ final class TerminalPaneView: NSView {
 
     var isActive = false {
         didSet {
+            if isActive {
+                isAlerting = false
+            }
+            updateBorder()
+        }
+    }
+
+    private var isAlerting = false {
+        didSet {
+            guard oldValue != isAlerting else { return }
             updateBorder()
         }
     }
@@ -35,6 +45,7 @@ final class TerminalPaneView: NSView {
     private var processStatus: String?
     private var didStartProcess = false
     private var trackingArea: NSTrackingArea?
+    private var bellInterceptor: BellInterceptingTerminalDelegate?
 
     init(frame frameRect: NSRect = .zero, currentDirectory: String = NSHomeDirectory()) {
         self.currentDirectory = currentDirectory
@@ -81,6 +92,16 @@ final class TerminalPaneView: NSView {
         terminalView.autoresizingMask = [.width, .height]
         terminalView.font = TerminalFontProvider.preferredFont()
         terminalView.processDelegate = self
+
+        if let wrapped = terminalView.terminalDelegate {
+            let interceptor = BellInterceptingTerminalDelegate(
+                wrapping: wrapped,
+                onBell: { [weak self] in self?.handleBell() },
+                onUserInput: { [weak self] in self?.handleUserInput() }
+            )
+            bellInterceptor = interceptor
+            terminalView.terminalDelegate = interceptor
+        }
 
         addSubview(titleLabel)
         addSubview(renameField)
@@ -131,9 +152,18 @@ final class TerminalPaneView: NSView {
             return
         }
 
+        isAlerting = false
         onFocus?(id)
         window?.makeFirstResponder(terminalView)
         super.mouseDown(with: event)
+    }
+
+    private func handleBell() {
+        isAlerting = true
+    }
+
+    fileprivate func handleUserInput() {
+        isAlerting = false
     }
 
     override func updateTrackingAreas() {
@@ -247,7 +277,81 @@ final class TerminalPaneView: NSView {
     }
 
     private func updateBorder() {
-        layer?.borderColor = (isActive ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        let color: NSColor
+        let width: CGFloat
+        if isAlerting {
+            color = NSColor.systemOrange
+            width = 2
+        } else if isActive {
+            color = .controlAccentColor
+            width = 1
+        } else {
+            color = .separatorColor
+            width = 1
+        }
+        layer?.borderColor = color.cgColor
+        layer?.borderWidth = width
+    }
+}
+
+private final class BellInterceptingTerminalDelegate: NSObject, TerminalViewDelegate {
+    private weak var wrapped: TerminalViewDelegate?
+    private let onBell: () -> Void
+    private let onUserInput: () -> Void
+
+    init(
+        wrapping wrapped: TerminalViewDelegate,
+        onBell: @escaping () -> Void,
+        onUserInput: @escaping () -> Void
+    ) {
+        self.wrapped = wrapped
+        self.onBell = onBell
+        self.onUserInput = onUserInput
+    }
+
+    func bell(source: TerminalView) {
+        onBell()
+    }
+
+    func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
+        wrapped?.sizeChanged(source: source, newCols: newCols, newRows: newRows)
+    }
+
+    func setTerminalTitle(source: TerminalView, title: String) {
+        wrapped?.setTerminalTitle(source: source, title: title)
+    }
+
+    func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
+        wrapped?.hostCurrentDirectoryUpdate(source: source, directory: directory)
+    }
+
+    func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        onUserInput()
+        wrapped?.send(source: source, data: data)
+    }
+
+    func scrolled(source: TerminalView, position: Double) {
+        wrapped?.scrolled(source: source, position: position)
+    }
+
+    func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
+        if let wrapped {
+            wrapped.requestOpenLink(source: source, link: link, params: params)
+        } else if let url = URL(string: link) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func clipboardCopy(source: TerminalView, content: Data) {
+        wrapped?.clipboardCopy(source: source, content: content)
+    }
+
+    func iTermContent(source: TerminalView, content: ArraySlice<UInt8>) {
+        wrapped?.iTermContent(source: source, content: content)
+    }
+
+    func rangeChanged(source: TerminalView, startY: Int, endY: Int) {
+        wrapped?.rangeChanged(source: source, startY: startY, endY: endY)
     }
 }
 

@@ -7,6 +7,7 @@ final class TileContainerView: NSView {
     private var splitOverlay: TileSplitModeOverlayView?
     private var nodeFrames: [UUID: NSRect] = [:]
     private(set) var activePaneID: UUID?
+    private let emptyStateLabel = NSTextField(labelWithString: "No sessions.\nPress '+' to get started")
     var onSplitModeChanged: ((Bool) -> Void)?
 
     var isSplitModeActive: Bool {
@@ -14,15 +15,14 @@ final class TileContainerView: NSView {
     }
 
     override init(frame frameRect: NSRect) {
-        let initialPane = terminalManager.makePane()
-        tree = TileTree(rootID: initialPane.id)
-        activePaneID = initialPane.id
+        tree = TileTree()
 
         super.init(frame: frameRect)
 
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
-        addPane(initialPane)
+        configureEmptyStateLabel()
+        updateEmptyState()
     }
 
     required init?(coder: NSCoder) {
@@ -33,9 +33,15 @@ final class TileContainerView: NSView {
         super.layout()
         layoutTileTree()
         splitOverlay?.frame = bounds
+        layoutEmptyState()
     }
 
     func enterSplitMode() {
+        guard !tree.isEmpty else {
+            createInitialPane()
+            return
+        }
+
         guard splitOverlay == nil else {
             return
         }
@@ -68,6 +74,7 @@ final class TileContainerView: NSView {
 
     func splitActivePane(edge: SplitInsertionEdge) {
         guard let activePaneID else {
+            createInitialPane()
             return
         }
 
@@ -92,6 +99,15 @@ final class TileContainerView: NSView {
     private func commitSplit(_ candidate: SplitCandidate) {
         splitPane(id: candidate.paneID, edge: candidate.edge)
         exitSplitMode()
+    }
+
+    private func createInitialPane() {
+        let pane = terminalManager.makePane()
+        tree.setRoot(id: pane.id)
+        activePaneID = pane.id
+        addPane(pane)
+        layoutTileTree(animated: true, appearingPaneID: pane.id)
+        window?.makeFirstResponder(pane.terminalView)
     }
 
     private func splitPane(id: UUID, edge: SplitInsertionEdge) {
@@ -125,6 +141,7 @@ final class TileContainerView: NSView {
         }
         addSubview(pane)
         updateCloseAvailability()
+        updateEmptyState()
     }
 
     private func setActivePane(_ id: UUID) {
@@ -143,12 +160,19 @@ final class TileContainerView: NSView {
         }
         nodeFrames.removeAll()
 
+        guard let root = tree.root else {
+            terminalManager.panes.forEach { $0.removeFromSuperview() }
+            activePaneID = nil
+            updateEmptyState()
+            return
+        }
+
         if animated && window != nil {
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.18
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 self.layout(
-                    node: self.tree.root,
+                    node: root,
                     in: self.bounds.insetBy(dx: 6, dy: 6),
                     animated: true,
                     appearingPaneID: appearingPaneID,
@@ -157,7 +181,7 @@ final class TileContainerView: NSView {
             }
         } else {
             layout(
-                node: tree.root,
+                node: root,
                 in: bounds.insetBy(dx: 6, dy: 6),
                 animated: false,
                 appearingPaneID: nil,
@@ -169,11 +193,11 @@ final class TileContainerView: NSView {
             terminalManager.pane(id: activePaneID)?.isActive = true
         }
         updateCloseAvailability()
+        updateEmptyState()
     }
 
     private func updateCloseAvailability() {
-        let canClose = terminalManager.count > 1
-        terminalManager.panes.forEach { $0.canClose = canClose }
+        terminalManager.panes.forEach { $0.canClose = true }
     }
 
     private func layout(node: TileNode, in frame: NSRect, animated: Bool, appearingPaneID: UUID?, rebuildHandles: Bool) {
@@ -281,7 +305,7 @@ final class TileContainerView: NSView {
     }
 
     private func splitCandidate(at point: NSPoint) -> SplitCandidate? {
-        guard let leafID = leafID(at: point, in: tree.root), let paneFrame = nodeFrames[leafID] else {
+        guard let root = tree.root, let leafID = leafID(at: point, in: root), let paneFrame = nodeFrames[leafID] else {
             return nil
         }
 
@@ -328,5 +352,34 @@ final class TileContainerView: NSView {
         }
 
         return nil
+    }
+
+    private func configureEmptyStateLabel() {
+        emptyStateLabel.font = .systemFont(ofSize: 18, weight: .medium)
+        emptyStateLabel.textColor = .secondaryLabelColor
+        emptyStateLabel.alignment = .center
+        emptyStateLabel.maximumNumberOfLines = 2
+        emptyStateLabel.lineBreakMode = .byWordWrapping
+        emptyStateLabel.isHidden = true
+        addSubview(emptyStateLabel)
+    }
+
+    private func layoutEmptyState() {
+        let size = emptyStateLabel.sizeThatFits(NSSize(width: max(0, bounds.width - 48), height: .greatestFiniteMagnitude))
+        emptyStateLabel.frame = NSRect(
+            x: (bounds.width - size.width) / 2,
+            y: (bounds.height - size.height) / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func updateEmptyState() {
+        let isEmpty = tree.isEmpty
+        emptyStateLabel.isHidden = !isEmpty
+        if isEmpty {
+            addSubview(emptyStateLabel, positioned: .above, relativeTo: nil)
+            layoutEmptyState()
+        }
     }
 }

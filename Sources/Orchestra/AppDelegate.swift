@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenuBuilder.build()
+        NSApp.applicationIconImage = AppIconLoader.load()
 
         let controller = MainWindowController()
         mainWindowController = controller
@@ -25,6 +26,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+}
+
+enum AppIconLoader {
+    static func load() -> NSImage? {
+        guard
+            let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+            let image = NSImage(contentsOf: url)
+        else {
+            return nil
+        }
+
+        image.size = NSSize(width: 512, height: 512)
+        return image
     }
 }
 

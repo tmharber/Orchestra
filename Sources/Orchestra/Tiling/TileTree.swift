@@ -2,34 +2,77 @@ import CoreGraphics
 import Foundation
 
 final class TileTree {
-    private(set) var root: TileNode
+    private(set) var root: TileNode?
+
+    var isEmpty: Bool {
+        root == nil
+    }
 
     init(rootID: UUID) {
         root = .leaf(id: rootID)
     }
 
+    init() {
+        root = nil
+    }
+
+    func setRoot(id: UUID) {
+        root = .leaf(id: id)
+    }
+
     func splitLeaf(id: UUID, edge: SplitInsertionEdge, newID: UUID) -> Bool {
-        splitLeaf(id: id, edge: edge, newID: newID, in: &root)
+        guard var root else {
+            return false
+        }
+
+        defer {
+            self.root = root
+        }
+
+        return splitLeaf(id: id, edge: edge, newID: newID, in: &root)
     }
 
     func closeLeaf(id: UUID) -> TileCloseResult? {
-        if case .leaf(let rootID) = root, rootID == id {
+        guard var root else {
             return nil
         }
 
-        return closeLeaf(id: id, in: &root)
+        if case .leaf(let rootID) = root, rootID == id {
+            self.root = nil
+            return TileCloseResult(closedID: rootID, focusID: nil)
+        }
+
+        let result = closeLeaf(id: id, in: &root)
+        self.root = root
+        return result
     }
 
     func containsLeaf(id: UUID) -> Bool {
-        containsLeaf(id: id, in: root)
+        guard let root else {
+            return false
+        }
+
+        return containsLeaf(id: id, in: root)
     }
 
     func firstLeafID() -> UUID? {
-        firstLeafID(in: root)
+        guard let root else {
+            return nil
+        }
+
+        return firstLeafID(in: root)
     }
 
     func updateRatio(splitID: UUID, ratio: CGFloat) -> Bool {
-        updateRatio(splitID: splitID, ratio: ratio, in: &root)
+        guard var root else {
+            return false
+        }
+
+        defer {
+            self.root = root
+        }
+
+        return updateRatio(splitID: splitID, ratio: ratio, in: &root)
     }
 
     private func splitLeaf(id: UUID, edge: SplitInsertionEdge, newID: UUID, in node: inout TileNode) -> Bool {

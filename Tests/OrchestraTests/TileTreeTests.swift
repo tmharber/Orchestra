@@ -42,12 +42,16 @@ final class TileTreeTests: XCTestCase {
         XCTAssertEqual(second.id, rightID)
     }
 
-    func testClosingOnlyLeafKeepsTreeAlive() {
+    func testClosingOnlyLeafEmptiesTree() {
         let rootID = UUID()
         let tree = TileTree(rootID: rootID)
 
-        XCTAssertNil(tree.closeLeaf(id: rootID))
-        XCTAssertTrue(tree.containsLeaf(id: rootID))
+        let result = tree.closeLeaf(id: rootID)
+        XCTAssertEqual(result?.closedID, rootID)
+        XCTAssertNil(result?.focusID)
+        XCTAssertFalse(tree.containsLeaf(id: rootID))
+        XCTAssertNil(tree.firstLeafID())
+        XCTAssertTrue(tree.isEmpty)
     }
 
     func testClosingLeafPromotesSibling() {
@@ -64,13 +68,13 @@ final class TileTreeTests: XCTestCase {
         XCTAssertEqual(tree.firstLeafID(), newID)
     }
 
-    func testUpdateRatioChangesOnlyMatchingSplit() {
+    func testUpdateRatioChangesOnlyMatchingSplit() throws {
         let rootID = UUID()
         let newID = UUID()
         let tree = TileTree(rootID: rootID)
 
         XCTAssertTrue(tree.splitLeaf(id: rootID, edge: .bottom, newID: newID))
-        let splitID = tree.root.id
+        let splitID = try XCTUnwrap(tree.root?.id)
 
         XCTAssertTrue(tree.updateRatio(splitID: splitID, ratio: 0.7))
 
@@ -81,14 +85,14 @@ final class TileTreeTests: XCTestCase {
         XCTAssertEqual(ratio, 0.7)
     }
 
-    func testUpdateNestedRatioDoesNotChangeAncestorRatio() {
+    func testUpdateNestedRatioDoesNotChangeAncestorRatio() throws {
         let rootID = UUID()
         let rightID = UUID()
         let nestedID = UUID()
         let tree = TileTree(rootID: rootID)
 
         XCTAssertTrue(tree.splitLeaf(id: rootID, edge: .right, newID: rightID))
-        let rootSplitID = tree.root.id
+        let rootSplitID = try XCTUnwrap(tree.root?.id)
         XCTAssertTrue(tree.updateRatio(splitID: rootSplitID, ratio: 0.3))
         XCTAssertTrue(tree.splitLeaf(id: rightID, edge: .bottom, newID: nestedID))
 
