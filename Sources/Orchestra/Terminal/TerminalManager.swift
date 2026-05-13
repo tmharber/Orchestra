@@ -11,8 +11,8 @@ final class TerminalManager {
         panesByID.count
     }
 
-    func makePane() -> TerminalPaneView {
-        let pane = TerminalPaneView()
+    func makePane(currentDirectory: String = NSHomeDirectory()) -> TerminalPaneView {
+        let pane = TerminalPaneView(currentDirectory: currentDirectory)
         panesByID[pane.id] = pane
         return pane
     }

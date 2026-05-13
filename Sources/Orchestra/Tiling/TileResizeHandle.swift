@@ -5,6 +5,7 @@ final class TileResizeHandle: NSView {
     private let splitID: UUID
     private let frameProvider: (UUID) -> NSRect?
     private let onResize: (UUID, CGFloat) -> Void
+    private let onResizeEnded: () -> Void
     private let minimumPaneSize = NSSize(width: 200, height: 100)
     private let dividerSize: CGFloat = 8
 
@@ -12,12 +13,14 @@ final class TileResizeHandle: NSView {
         axis: SplitAxis,
         splitID: UUID,
         frameProvider: @escaping (UUID) -> NSRect?,
-        onResize: @escaping (UUID, CGFloat) -> Void
+        onResize: @escaping (UUID, CGFloat) -> Void,
+        onResizeEnded: @escaping () -> Void
     ) {
         self.axis = axis
         self.splitID = splitID
         self.frameProvider = frameProvider
         self.onResize = onResize
+        self.onResizeEnded = onResizeEnded
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -54,6 +57,7 @@ final class TileResizeHandle: NSView {
             }
 
             if nextEvent.type == .leftMouseUp {
+                onResizeEnded()
                 return
             }
 

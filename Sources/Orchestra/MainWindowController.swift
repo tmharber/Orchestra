@@ -35,6 +35,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     @objc func enterSplitMode(_ sender: Any?) {
+        contentView.tileContainer.enterSplitMode()
+    }
+
+    @objc func toggleSplitMode(_ sender: Any?) {
         contentView.tileContainer.toggleSplitMode()
     }
 
@@ -82,7 +86,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
             let button = NSButton(
                 image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add terminal") ?? NSImage(),
                 target: self,
-                action: #selector(enterSplitMode(_:))
+                action: #selector(toggleSplitMode(_:))
             )
             button.setButtonType(.toggle)
             button.bezelStyle = .texturedRounded

@@ -12,7 +12,7 @@ final class TileTree {
         splitLeaf(id: id, edge: edge, newID: newID, in: &root)
     }
 
-    func closeLeaf(id: UUID) -> UUID? {
+    func closeLeaf(id: UUID) -> TileCloseResult? {
         if case .leaf(let rootID) = root, rootID == id {
             return nil
         }
@@ -65,7 +65,7 @@ final class TileTree {
         }
     }
 
-    private func closeLeaf(id: UUID, in node: inout TileNode) -> UUID? {
+    private func closeLeaf(id: UUID, in node: inout TileNode) -> TileCloseResult? {
         switch node {
         case .leaf:
             return nil
@@ -73,12 +73,12 @@ final class TileTree {
         case .split(_, _, let first, let second, _):
             if case .leaf(let firstID) = first, firstID == id {
                 node = second
-                return firstID
+                return TileCloseResult(closedID: firstID, focusID: firstLeafID(in: second))
             }
 
             if case .leaf(let secondID) = second, secondID == id {
                 node = first
-                return secondID
+                return TileCloseResult(closedID: secondID, focusID: firstLeafID(in: first))
             }
         }
 
@@ -122,23 +122,28 @@ final class TileTree {
         case .leaf:
             return false
 
-        case .split(let id, let axis, var first, var second, _):
+        case .split(let id, let axis, var first, var second, let existingRatio):
             if id == splitID {
                 node = .split(id: id, axis: axis, first: first, second: second, ratio: ratio)
                 return true
             }
 
             if updateRatio(splitID: splitID, ratio: ratio, in: &first) {
-                node = .split(id: id, axis: axis, first: first, second: second, ratio: ratio)
+                node = .split(id: id, axis: axis, first: first, second: second, ratio: existingRatio)
                 return true
             }
 
             if updateRatio(splitID: splitID, ratio: ratio, in: &second) {
-                node = .split(id: id, axis: axis, first: first, second: second, ratio: ratio)
+                node = .split(id: id, axis: axis, first: first, second: second, ratio: existingRatio)
                 return true
             }
 
             return false
         }
     }
+}
+
+struct TileCloseResult {
+    let closedID: UUID
+    let focusID: UUID?
 }

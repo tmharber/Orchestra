@@ -56,7 +56,9 @@ final class TileTreeTests: XCTestCase {
         let tree = TileTree(rootID: rootID)
 
         XCTAssertTrue(tree.splitLeaf(id: rootID, edge: .right, newID: newID))
-        XCTAssertEqual(tree.closeLeaf(id: rootID), rootID)
+        let result = tree.closeLeaf(id: rootID)
+        XCTAssertEqual(result?.closedID, rootID)
+        XCTAssertEqual(result?.focusID, newID)
         XCTAssertFalse(tree.containsLeaf(id: rootID))
         XCTAssertTrue(tree.containsLeaf(id: newID))
         XCTAssertEqual(tree.firstLeafID(), newID)
@@ -77,5 +79,32 @@ final class TileTreeTests: XCTestCase {
         }
 
         XCTAssertEqual(ratio, 0.7)
+    }
+
+    func testUpdateNestedRatioDoesNotChangeAncestorRatio() {
+        let rootID = UUID()
+        let rightID = UUID()
+        let nestedID = UUID()
+        let tree = TileTree(rootID: rootID)
+
+        XCTAssertTrue(tree.splitLeaf(id: rootID, edge: .right, newID: rightID))
+        let rootSplitID = tree.root.id
+        XCTAssertTrue(tree.updateRatio(splitID: rootSplitID, ratio: 0.3))
+        XCTAssertTrue(tree.splitLeaf(id: rightID, edge: .bottom, newID: nestedID))
+
+        guard case .split(_, _, _, let second, _) = tree.root else {
+            return XCTFail("Expected root split")
+        }
+
+        let nestedSplitID = second.id
+        XCTAssertTrue(tree.updateRatio(splitID: nestedSplitID, ratio: 0.8))
+
+        guard case .split(_, _, _, let updatedSecond, let rootRatio) = tree.root,
+              case .split(_, _, _, _, let nestedRatio) = updatedSecond else {
+            return XCTFail("Expected nested split")
+        }
+
+        XCTAssertEqual(rootRatio, 0.3)
+        XCTAssertEqual(nestedRatio, 0.8)
     }
 }

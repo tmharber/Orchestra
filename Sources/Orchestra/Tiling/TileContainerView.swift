@@ -75,13 +75,13 @@ final class TileContainerView: NSView {
     }
 
     func closeActivePane() {
-        guard let activePaneID, let closedPaneID = tree.closeLeaf(id: activePaneID), let closedPane = terminalManager.pane(id: closedPaneID) else {
+        guard let activePaneID, let result = tree.closeLeaf(id: activePaneID), let closedPane = terminalManager.pane(id: result.closedID) else {
             NSSound.beep()
             return
         }
 
         terminalManager.removePane(closedPane)
-        self.activePaneID = tree.firstLeafID()
+        self.activePaneID = result.focusID ?? tree.firstLeafID()
         layoutTileTree()
     }
 
@@ -95,7 +95,8 @@ final class TileContainerView: NSView {
     }
 
     private func splitPane(id: UUID, edge: SplitInsertionEdge) {
-        let newPane = terminalManager.makePane()
+        let currentDirectory = terminalManager.pane(id: id)?.currentDirectory ?? NSHomeDirectory()
+        let newPane = terminalManager.makePane(currentDirectory: currentDirectory)
         addPane(newPane)
 
         guard tree.splitLeaf(id: id, edge: edge, newID: newPane.id) else {
@@ -135,9 +136,11 @@ final class TileContainerView: NSView {
         terminalManager.pane(id: id)?.isActive = true
     }
 
-    private func layoutTileTree(animated: Bool = false, appearingPaneID: UUID? = nil) {
-        resizeHandles.forEach { $0.removeFromSuperview() }
-        resizeHandles.removeAll()
+    private func layoutTileTree(animated: Bool = false, appearingPaneID: UUID? = nil, rebuildHandles: Bool = true) {
+        if rebuildHandles {
+            resizeHandles.forEach { $0.removeFromSuperview() }
+            resizeHandles.removeAll()
+        }
         nodeFrames.removeAll()
 
         if animated && window != nil {
@@ -148,11 +151,18 @@ final class TileContainerView: NSView {
                     node: self.tree.root,
                     in: self.bounds.insetBy(dx: 6, dy: 6),
                     animated: true,
-                    appearingPaneID: appearingPaneID
+                    appearingPaneID: appearingPaneID,
+                    rebuildHandles: rebuildHandles
                 )
             }
         } else {
-            layout(node: tree.root, in: bounds.insetBy(dx: 6, dy: 6), animated: false, appearingPaneID: nil)
+            layout(
+                node: tree.root,
+                in: bounds.insetBy(dx: 6, dy: 6),
+                animated: false,
+                appearingPaneID: nil,
+                rebuildHandles: rebuildHandles
+            )
         }
 
         if let activePaneID {
@@ -166,7 +176,7 @@ final class TileContainerView: NSView {
         terminalManager.panes.forEach { $0.canClose = canClose }
     }
 
-    private func layout(node: TileNode, in frame: NSRect, animated: Bool, appearingPaneID: UUID?) {
+    private func layout(node: TileNode, in frame: NSRect, animated: Bool, appearingPaneID: UUID?, rebuildHandles: Bool) {
         nodeFrames[node.id] = frame
 
         switch node {
@@ -208,14 +218,16 @@ final class TileContainerView: NSView {
                     width: max(0, frame.width - firstWidth - divider),
                     height: frame.height
                 )
-                layout(node: first, in: firstFrame, animated: animated, appearingPaneID: appearingPaneID)
-                layout(node: second, in: secondFrame, animated: animated, appearingPaneID: appearingPaneID)
-                addResizeHandle(axis: axis, splitID: splitID, frame: NSRect(
-                    x: firstFrame.maxX,
-                    y: frame.minY,
-                    width: divider,
-                    height: frame.height
-                ))
+                layout(node: first, in: firstFrame, animated: animated, appearingPaneID: appearingPaneID, rebuildHandles: rebuildHandles)
+                layout(node: second, in: secondFrame, animated: animated, appearingPaneID: appearingPaneID, rebuildHandles: rebuildHandles)
+                if rebuildHandles {
+                    addResizeHandle(axis: axis, splitID: splitID, frame: NSRect(
+                        x: firstFrame.maxX,
+                        y: frame.minY,
+                        width: divider,
+                        height: frame.height
+                    ))
+                }
             case .vertical:
                 let firstHeight = floor((frame.height - divider) * ratio)
                 let secondHeight = max(0, frame.height - firstHeight - divider)
@@ -231,14 +243,16 @@ final class TileContainerView: NSView {
                     width: frame.width,
                     height: firstHeight
                 )
-                layout(node: first, in: firstFrame, animated: animated, appearingPaneID: appearingPaneID)
-                layout(node: second, in: secondFrame, animated: animated, appearingPaneID: appearingPaneID)
-                addResizeHandle(axis: axis, splitID: splitID, frame: NSRect(
-                    x: frame.minX,
-                    y: secondFrame.maxY,
-                    width: frame.width,
-                    height: divider
-                ))
+                layout(node: first, in: firstFrame, animated: animated, appearingPaneID: appearingPaneID, rebuildHandles: rebuildHandles)
+                layout(node: second, in: secondFrame, animated: animated, appearingPaneID: appearingPaneID, rebuildHandles: rebuildHandles)
+                if rebuildHandles {
+                    addResizeHandle(axis: axis, splitID: splitID, frame: NSRect(
+                        x: frame.minX,
+                        y: secondFrame.maxY,
+                        width: frame.width,
+                        height: divider
+                    ))
+                }
             }
         }
     }
@@ -255,7 +269,10 @@ final class TileContainerView: NSView {
                     return
                 }
 
-                self.layoutTileTree()
+                self.layoutTileTree(rebuildHandles: false)
+            },
+            onResizeEnded: { [weak self] in
+                self?.layoutTileTree()
             }
         )
         handle.frame = frame

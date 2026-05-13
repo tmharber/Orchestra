@@ -4,6 +4,7 @@ import SwiftTerm
 final class TerminalPaneView: NSView {
     let id = UUID()
     let terminalView = LocalProcessTerminalView(frame: .zero)
+    private(set) var currentDirectory: String
 
     var onClose: ((UUID) -> Void)?
     var onFocus: ((UUID) -> Void)?
@@ -27,13 +28,17 @@ final class TerminalPaneView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let renameField = RenameTextField(frame: .zero)
     private let closeButton = NSButton()
+    private let restartButton = NSButton()
     private let maximumPaneNameLength = 80
     private var paneName = "Terminal"
-    private var currentFolderName = URL(fileURLWithPath: NSHomeDirectory()).lastPathComponent
+    private var currentFolderName: String
+    private var processStatus: String?
     private var didStartProcess = false
     private var trackingArea: NSTrackingArea?
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect = .zero, currentDirectory: String = NSHomeDirectory()) {
+        self.currentDirectory = currentDirectory
+        currentFolderName = URL(fileURLWithPath: currentDirectory).lastPathComponent
         super.init(frame: frameRect)
 
         wantsLayer = true
@@ -64,12 +69,22 @@ final class TerminalPaneView: NSView {
         closeButton.action = #selector(closePane(_:))
         closeButton.isHidden = true
 
+        restartButton.bezelStyle = .circular
+        restartButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Restart terminal")
+        restartButton.imagePosition = .imageOnly
+        restartButton.isBordered = false
+        restartButton.target = self
+        restartButton.action = #selector(restartPane(_:))
+        restartButton.toolTip = "Restart terminal"
+        restartButton.isHidden = true
+
         terminalView.autoresizingMask = [.width, .height]
         terminalView.font = TerminalFontProvider.preferredFont()
         terminalView.processDelegate = self
 
         addSubview(titleLabel)
         addSubview(renameField)
+        addSubview(restartButton)
         addSubview(closeButton)
         addSubview(terminalView)
         updateTitle()
@@ -89,11 +104,13 @@ final class TerminalPaneView: NSView {
         super.layout()
 
         let chromeHeight: CGFloat = 26
-        closeButton.frame = NSRect(x: 7, y: bounds.height - 22, width: 16, height: 16)
+        restartButton.frame = NSRect(x: 7, y: bounds.height - 22, width: 16, height: 16)
+        closeButton.frame = NSRect(x: restartButton.isHidden ? 7 : 27, y: bounds.height - 22, width: 16, height: 16)
+        let titleX: CGFloat = restartButton.isHidden && closeButton.isHidden ? 30 : (closeButton.frame.maxX + 7)
         titleLabel.frame = NSRect(
-            x: 30,
+            x: titleX,
             y: bounds.height - chromeHeight + 4,
-            width: max(0, bounds.width - 42),
+            width: max(0, bounds.width - titleX - 12),
             height: 16
         )
         renameField.frame = titleLabel.frame.insetBy(dx: -3, dy: -2)
@@ -138,10 +155,14 @@ final class TerminalPaneView: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         closeButton.isHidden = !canClose
+        restartButton.isHidden = processStatus == nil
+        needsLayout = true
     }
 
     override func mouseExited(with event: NSEvent) {
         closeButton.isHidden = true
+        restartButton.isHidden = processStatus == nil
+        needsLayout = true
     }
 
     @objc private func closePane(_ sender: Any?) {
@@ -159,6 +180,9 @@ final class TerminalPaneView: NSView {
         }
 
         didStartProcess = true
+        processStatus = nil
+        restartButton.isHidden = true
+        updateTitle()
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         let shellName = URL(fileURLWithPath: shell).lastPathComponent
         terminalView.startProcess(
@@ -166,12 +190,16 @@ final class TerminalPaneView: NSView {
             args: ["-l"],
             environment: nil,
             execName: "-" + shellName,
-            currentDirectory: NSHomeDirectory()
+            currentDirectory: currentDirectory
         )
     }
 
     private func updateTitle() {
-        titleLabel.stringValue = "\(paneName) · \(currentFolderName)"
+        var parts = [paneName, currentFolderName]
+        if let processStatus {
+            parts.append(processStatus)
+        }
+        titleLabel.stringValue = parts.joined(separator: " · ")
     }
 
     private func beginRenaming() {
@@ -201,17 +229,21 @@ final class TerminalPaneView: NSView {
         window?.makeFirstResponder(terminalView)
     }
 
-    private func folderName(from directory: String?) -> String? {
+    private func directoryPath(from directory: String?) -> String? {
         guard let directory, !directory.isEmpty else {
             return nil
         }
 
         if let url = URL(string: directory), url.scheme == "file" {
-            let path = url.path.removingPercentEncoding ?? url.path
-            return URL(fileURLWithPath: path).lastPathComponent
+            return url.path.removingPercentEncoding ?? url.path
         }
 
-        return URL(fileURLWithPath: directory).lastPathComponent
+        return directory
+    }
+
+    @objc private func restartPane(_ sender: Any?) {
+        didStartProcess = false
+        startProcessIfReady()
     }
 
     private func updateBorder() {
@@ -225,15 +257,22 @@ extension TerminalPaneView: LocalProcessTerminalViewDelegate {
     func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
-        guard let folderName = folderName(from: directory), !folderName.isEmpty else {
+        guard let directoryPath = directoryPath(from: directory), !directoryPath.isEmpty else {
             return
         }
 
-        currentFolderName = folderName
+        currentDirectory = directoryPath
+        currentFolderName = URL(fileURLWithPath: directoryPath).lastPathComponent
         updateTitle()
     }
 
-    func processTerminated(source: TerminalView, exitCode: Int32?) {}
+    func processTerminated(source: TerminalView, exitCode: Int32?) {
+        didStartProcess = false
+        processStatus = exitCode.map { "Exited \($0)" } ?? "Exited"
+        restartButton.isHidden = false
+        updateTitle()
+        needsLayout = true
+    }
 }
 
 final class RenameTextField: NSTextField, NSTextFieldDelegate {
