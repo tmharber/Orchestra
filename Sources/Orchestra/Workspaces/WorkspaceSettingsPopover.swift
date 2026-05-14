@@ -15,25 +15,15 @@ final class WorkspaceSettingsDialogView: NSView {
     }
 
     init(workspace: Workspace) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 132))
+        super.init(frame: NSRect(x: 0, y: 0, width: 400, height: 136))
 
-        nameLabel.attributedStringValue = .tracked(
-            "NAME",
-            font: DS.Typography.eyebrow(),
-            color: NSColor.tertiaryLabelColor,
-            tracking: 1.4
-        )
-
+        nameLabel.font = DS.Typography.dialogLabel()
+        nameLabel.textColor = .labelColor
         nameField.stringValue = workspace.name
         nameField.font = DS.Typography.dialogValue()
 
-        directoryLabel.attributedStringValue = .tracked(
-            "DEFAULT DIRECTORY",
-            font: DS.Typography.eyebrow(),
-            color: NSColor.tertiaryLabelColor,
-            tracking: 1.4
-        )
-
+        directoryLabel.font = DS.Typography.dialogLabel()
+        directoryLabel.textColor = .labelColor
         directoryField.stringValue = workspace.defaultDirectory
         directoryField.placeholderString = NSHomeDirectory()
         directoryField.font = DS.Typography.dialogMono()
@@ -51,7 +41,7 @@ final class WorkspaceSettingsDialogView: NSView {
     override func layout() {
         super.layout()
 
-        let labelHeight: CGFloat = 14
+        let labelHeight: CGFloat = 16
         let fieldHeight: CGFloat = 24
         let gapLabelToField: CGFloat = 6
         let gapBetweenGroups: CGFloat = 16

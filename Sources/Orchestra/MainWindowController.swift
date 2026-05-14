@@ -220,6 +220,17 @@ final class MainContentView: NSView {
         return view
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyDynamicColors()
+    }
+
+    private func applyDynamicColors() {
+        let divider = DS.Palette.sidebarDivider.cgColor
+        leftDivider.layer?.backgroundColor = divider
+        rightDivider.layer?.backgroundColor = divider
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -281,13 +292,15 @@ final class MainContentView: NSView {
         }
     }
 
-    private func targetFrames() -> (
-        leftSidebar: NSRect,
-        leftDivider: NSRect,
-        tileContainer: NSRect,
-        rightDivider: NSRect,
-        rightSidebar: NSRect
-    ) {
+    private struct LayoutFrames {
+        var leftSidebar: NSRect
+        var leftDivider: NSRect
+        var tileContainer: NSRect
+        var rightDivider: NSRect
+        var rightSidebar: NSRect
+    }
+
+    private func targetFrames() -> LayoutFrames {
         let leftWidth = isLeftSidebarVisible ? sidebarWidth : 0
         let rightWidth = isRightSidebarVisible ? sidebarWidth : 0
         let dividerWidth: CGFloat = 1
@@ -296,7 +309,7 @@ final class MainContentView: NSView {
         let tileX = leftWidth + (leftWidth > 0 ? dividerWidth : 0)
         let tileWidth = max(0, rightX - tileX - (rightWidth > 0 ? dividerWidth : 0))
 
-        return (
+        return LayoutFrames(
             leftSidebar: NSRect(x: 0, y: 0, width: leftWidth, height: bounds.height),
             leftDivider: NSRect(x: leftWidth, y: 0, width: dividerWidth, height: bounds.height),
             tileContainer: NSRect(x: tileX, y: 0, width: tileWidth, height: bounds.height),
@@ -454,7 +467,6 @@ final class MainContentView: NSView {
 }
 
 final class SidebarPlaceholderView: NSVisualEffectView {
-    private let eyebrowLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
 
@@ -464,16 +476,12 @@ final class SidebarPlaceholderView: NSVisualEffectView {
         blendingMode = .behindWindow
         state = .followsWindowActiveState
 
-        eyebrowLabel.attributedStringValue = .tracked(
-            title.uppercased(),
-            font: DS.Typography.eyebrow(),
-            color: NSColor.tertiaryLabelColor,
-            tracking: 1.4
+        titleLabel.attributedStringValue = .tracked(
+            title,
+            font: DS.Typography.sidebarTitle(),
+            color: .labelColor,
+            tracking: -0.3
         )
-
-        titleLabel.stringValue = "Coming Soon"
-        titleLabel.font = DS.Typography.sidebarTitle()
-        titleLabel.textColor = .labelColor
 
         detailLabel.stringValue = detail
         detailLabel.font = DS.Typography.emptyStateSecondary()
@@ -481,7 +489,6 @@ final class SidebarPlaceholderView: NSVisualEffectView {
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 0
 
-        addSubview(eyebrowLabel)
         addSubview(titleLabel)
         addSubview(detailLabel)
     }
@@ -493,24 +500,21 @@ final class SidebarPlaceholderView: NSVisualEffectView {
     override func layout() {
         super.layout()
 
-        let padding = DS.Metrics.sidebarInset
-        let topInset: CGFloat = 32
-        eyebrowLabel.frame = NSRect(
-            x: padding,
-            y: bounds.height - topInset,
-            width: max(0, bounds.width - padding * 2),
-            height: 14
-        )
+        let inset = DS.Metrics.sidebarInset
+        let titleBaseline = DS.Metrics.sidebarHeaderTitleBaseline
+        let titleHeight = DS.Metrics.sidebarHeaderTitleHeight
+
         titleLabel.frame = NSRect(
-            x: padding,
-            y: bounds.height - topInset - 26,
-            width: max(0, bounds.width - padding * 2),
-            height: 22
+            x: inset,
+            y: bounds.height - titleBaseline - titleHeight,
+            width: max(0, bounds.width - inset * 2),
+            height: titleHeight
         )
+
         detailLabel.frame = NSRect(
-            x: padding,
-            y: bounds.height - topInset - 80,
-            width: max(0, bounds.width - padding * 2),
+            x: inset,
+            y: titleLabel.frame.minY - 14 - 48,
+            width: max(0, bounds.width - inset * 2),
             height: 48
         )
     }

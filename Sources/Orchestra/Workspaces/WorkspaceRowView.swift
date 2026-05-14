@@ -87,6 +87,8 @@ final class WorkspaceRowView: NSTableCellView {
         onDelete = nil
         cancelRename()
         isHovered = false
+        isCurrentlyActive = false
+        applyState()
     }
 
     private var isCurrentlyActive = false
@@ -200,6 +202,11 @@ final class WorkspaceRowView: NSTableCellView {
         }
 
         super.mouseDown(with: event)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyState()
     }
 
     override func updateTrackingAreas() {

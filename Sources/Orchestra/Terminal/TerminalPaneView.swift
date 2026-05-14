@@ -52,8 +52,8 @@ final class TerminalPaneView: NSView {
     private let activityDot = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let renameField = RenameTextField(frame: .zero)
-    private let closeButton = PaneChromeButton()
-    private let restartButton = PaneChromeButton()
+    private let closeButton = HoverIconButton(style: .paneChrome, symbolName: "xmark")
+    private let restartButton = HoverIconButton(style: .paneChrome, symbolName: "arrow.clockwise")
     private let maximumPaneNameLength = 80
     private var paneName = "Terminal"
     private var currentFolderName: String
@@ -100,13 +100,11 @@ final class TerminalPaneView: NSView {
             self?.cancelRename()
         }
 
-        closeButton.symbolName = "xmark"
         closeButton.toolTip = "Close terminal"
         closeButton.target = self
         closeButton.action = #selector(closePane(_:))
         closeButton.isHidden = true
 
-        restartButton.symbolName = "arrow.clockwise"
         restartButton.toolTip = "Restart terminal"
         restartButton.target = self
         restartButton.action = #selector(restartPane(_:))
@@ -147,6 +145,13 @@ final class TerminalPaneView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         startProcessIfReady()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        titleBar.layer?.backgroundColor = DS.Palette.paneTitleBarFill.cgColor
+        titleBarBottomLine.layer?.backgroundColor = DS.Palette.paneTitleBarBorder.cgColor
+        updateBorder()
     }
 
     override func layout() {
@@ -220,8 +225,8 @@ final class TerminalPaneView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if titleLabel.frame.contains(point) {
+        let pointInTitleLabel = titleLabel.convert(event.locationInWindow, from: nil)
+        if titleLabel.bounds.contains(pointInTitleLabel) {
             beginRenaming()
             return
         }
@@ -496,67 +501,6 @@ extension TerminalPaneView: LocalProcessTerminalViewDelegate {
         restartButton.isHidden = false
         updateTitle()
         needsLayout = true
-    }
-}
-
-final class PaneChromeButton: NSButton {
-    private var trackingArea: NSTrackingArea?
-    private var isHovered = false { didSet { updateAppearance() } }
-
-    var symbolName: String = "xmark" {
-        didSet {
-            let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
-            image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-                .withSymbolConfiguration(config)
-        }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 4
-        layer?.cornerCurve = .continuous
-        isBordered = false
-        bezelStyle = .smallSquare
-        imagePosition = .imageOnly
-        contentTintColor = NSColor.tertiaryLabelColor
-
-        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
-        image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
-        updateAppearance()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        trackingArea = area
-        addTrackingArea(area)
-    }
-
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
-
-    private func updateAppearance() {
-        if isHovered {
-            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
-            contentTintColor = .labelColor
-        } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
-            contentTintColor = NSColor.tertiaryLabelColor
-        }
     }
 }
 

@@ -88,13 +88,18 @@ final class TileResizeHandle: NSView {
 
     private func applyHoverState() {
         let highlighted = isHovered || isDragging
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.12
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            indicator.animator().layer?.backgroundColor = highlighted
-                ? NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
-                : NSColor.clear.cgColor
-        }
+        let target = highlighted
+            ? NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
+            : NSColor.clear.cgColor
+        guard let layer = indicator.layer else { return }
+
+        let anim = CABasicAnimation(keyPath: "backgroundColor")
+        anim.fromValue = layer.backgroundColor
+        anim.toValue = target
+        anim.duration = 0.12
+        anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(anim, forKey: "backgroundColor")
+        layer.backgroundColor = target
     }
 
     override func resetCursorRects() {

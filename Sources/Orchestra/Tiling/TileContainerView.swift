@@ -54,6 +54,11 @@ final class TileContainerView: NSView {
         layoutEmptyState()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = DS.Palette.tileGutter.cgColor
+    }
+
     func enterSplitMode() {
         guard !tree.isEmpty else {
             createInitialPane()
@@ -531,14 +536,23 @@ final class KeyboardShortcutBadge: NSView {
         layer?.cornerRadius = 5
         layer?.cornerCurve = .continuous
         layer?.borderWidth = 1
-        layer?.borderColor = NSColor.quaternaryLabelColor.cgColor
-        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.04).cgColor
 
         label.stringValue = text
         label.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
         label.textColor = .secondaryLabelColor
         label.alignment = .center
         addSubview(label)
+        applyDynamicColors()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyDynamicColors()
+    }
+
+    private func applyDynamicColors() {
+        layer?.borderColor = NSColor.quaternaryLabelColor.cgColor
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.04).cgColor
     }
 
     required init?(coder: NSCoder) {

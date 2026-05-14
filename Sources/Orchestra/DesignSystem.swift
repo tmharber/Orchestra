@@ -5,6 +5,9 @@ enum DS {
         static let unit: CGFloat = 4
         static let sidebarWidth: CGFloat = 256
         static let sidebarHeaderHeight: CGFloat = 64
+        static let sidebarHeaderTitleHeight: CGFloat = 28
+        static let sidebarHeaderTitleBaseline: CGFloat = 18
+        static let sidebarHeaderButtonSize: CGFloat = 26
         static let sidebarInset: CGFloat = 14
         static let rowHeight: CGFloat = 30
         static let rowCornerRadius: CGFloat = 7
@@ -147,5 +150,106 @@ extension NSAttributedString {
             .foregroundColor: color,
             .kern: tracking
         ])
+    }
+}
+
+final class HoverIconButton: NSButton {
+    struct Style {
+        let symbolPointSize: CGFloat
+        let symbolWeight: NSFont.Weight
+        let cornerRadius: CGFloat
+        let normalTint: NSColor
+        let hoverTint: NSColor
+        let hoverBackground: NSColor
+
+        static let sidebarHeader = Style(
+            symbolPointSize: 12,
+            symbolWeight: .semibold,
+            cornerRadius: 6,
+            normalTint: .secondaryLabelColor,
+            hoverTint: .labelColor,
+            hoverBackground: NSColor.labelColor.withAlphaComponent(0.08)
+        )
+
+        static let paneChrome = Style(
+            symbolPointSize: 9,
+            symbolWeight: .semibold,
+            cornerRadius: 4,
+            normalTint: .tertiaryLabelColor,
+            hoverTint: .labelColor,
+            hoverBackground: NSColor.white.withAlphaComponent(0.08)
+        )
+    }
+
+    private let style: Style
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false { didSet { applyAppearance() } }
+
+    var symbolName: String = "" {
+        didSet {
+            guard symbolName != oldValue else { return }
+            applySymbol()
+        }
+    }
+
+    init(style: Style, symbolName: String = "") {
+        self.style = style
+        self.symbolName = symbolName
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = style.cornerRadius
+        layer?.cornerCurve = .continuous
+        isBordered = false
+        bezelStyle = .smallSquare
+        imagePosition = .imageOnly
+        applySymbol()
+        applyAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyAppearance()
+    }
+
+    private func applySymbol() {
+        guard !symbolName.isEmpty else {
+            image = nil
+            return
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: style.symbolPointSize, weight: style.symbolWeight)
+        image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+    }
+
+    private func applyAppearance() {
+        if isHovered {
+            layer?.backgroundColor = style.hoverBackground.cgColor
+            contentTintColor = style.hoverTint
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            contentTintColor = style.normalTint
+        }
     }
 }
