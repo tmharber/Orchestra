@@ -3,6 +3,7 @@ import AppKit
 final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private let contentView = MainContentView()
     private weak var addTerminalButton: NSButton?
+    private weak var observedTileContainer: TileContainerView?
 
     convenience init() {
         let window = NSWindow(
@@ -21,9 +22,10 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         window?.contentView = contentView
         window?.center()
         installToolbar()
-        contentView.tileContainer.onSplitModeChanged = { [weak self] isActive in
-            self?.updateAddTerminalButton(isActive: isActive)
+        contentView.onActiveTileContainerChanged = { [weak self] tileContainer in
+            self?.observeTileContainer(tileContainer)
         }
+        observeTileContainer(contentView.activeTileContainer)
     }
 
     private func installToolbar() {
@@ -35,23 +37,27 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     @objc func enterSplitMode(_ sender: Any?) {
-        contentView.tileContainer.enterSplitMode()
+        contentView.activeTileContainer.enterSplitMode()
     }
 
     @objc func toggleSplitMode(_ sender: Any?) {
-        contentView.tileContainer.toggleSplitMode()
+        contentView.activeTileContainer.toggleSplitMode()
     }
 
     @objc func closeActivePane(_ sender: Any?) {
-        contentView.tileContainer.closeActivePane()
+        contentView.activeTileContainer.closeActivePane()
     }
 
     @objc func splitActivePaneRight(_ sender: Any?) {
-        contentView.tileContainer.splitActivePane(edge: .right)
+        contentView.activeTileContainer.splitActivePane(edge: .right)
     }
 
     @objc func splitActivePaneDown(_ sender: Any?) {
-        contentView.tileContainer.splitActivePane(edge: .bottom)
+        contentView.activeTileContainer.splitActivePane(edge: .bottom)
+    }
+
+    @objc func toggleActiveTerminalMouseReporting(_ sender: Any?) {
+        contentView.activeTileContainer.toggleActivePaneMouseReporting()
     }
 
     @objc func toggleLeftSidebar(_ sender: Any?) {
@@ -96,7 +102,7 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
             button.heightAnchor.constraint(equalToConstant: 28).isActive = true
             item.view = button
             addTerminalButton = button
-            updateAddTerminalButton(isActive: contentView.tileContainer.isSplitModeActive)
+            updateAddTerminalButton(isActive: contentView.activeTileContainer.isSplitModeActive)
         case .toggleLeftSidebar:
             item.label = "Left Sidebar"
             item.paletteLabel = "Left Sidebar"
@@ -121,6 +127,27 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
         addTerminalButton?.contentTintColor = isActive ? .controlAccentColor : .labelColor
         addTerminalButton?.toolTip = isActive ? "Exit add terminal mode" : "Add terminal"
     }
+
+    private func observeTileContainer(_ tileContainer: TileContainerView) {
+        observedTileContainer?.onSplitModeChanged = nil
+        observedTileContainer = tileContainer
+        tileContainer.onSplitModeChanged = { [weak self] isActive in
+            self?.updateAddTerminalButton(isActive: isActive)
+        }
+        updateAddTerminalButton(isActive: tileContainer.isSplitModeActive)
+    }
+
+    func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(toggleActiveTerminalMouseReporting(_:)) {
+            if let menuItem = item as? NSMenuItem {
+                menuItem.state = contentView.activeTileContainer.activePaneAllowsTerminalMouseReporting ? .on : .off
+            }
+
+            return contentView.activeTileContainer.paneCount > 0
+        }
+
+        return true
+    }
 }
 
 private extension NSToolbarItem.Identifier {
@@ -130,10 +157,17 @@ private extension NSToolbarItem.Identifier {
 }
 
 final class MainContentView: NSView {
-    private let sidebarWidth: CGFloat = 220
-    private let leftSidebar = SidebarPlaceholderView(title: "Tasks", detail: "Agent status and task list")
+    private let sidebarWidth: CGFloat = 280
+    private let workspaceStore = WorkspaceStore()
+    private let leftSidebar: WorkspaceNavigatorView
     private let rightSidebar = SidebarPlaceholderView(title: "Context", detail: "Notes and shared context")
-    let tileContainer = TileContainerView()
+    private weak var displayedTileContainer: TileContainerView?
+    private var focusRestoreGeneration = 0
+    var onActiveTileContainerChanged: ((TileContainerView) -> Void)?
+
+    var activeTileContainer: TileContainerView {
+        workspaceStore.active.tileContainer
+    }
 
     var isLeftSidebarVisible = true {
         didSet {
@@ -156,13 +190,17 @@ final class MainContentView: NSView {
     }
 
     override init(frame frameRect: NSRect) {
+        leftSidebar = WorkspaceNavigatorView(store: workspaceStore)
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
+        configureWorkspaceCallbacks()
+
+        addSubview(activeTileContainer)
         addSubview(leftSidebar)
-        addSubview(tileContainer)
         addSubview(rightSidebar)
+        displayedTileContainer = activeTileContainer
     }
 
     required init?(coder: NSCoder) {
@@ -189,7 +227,7 @@ final class MainContentView: NSView {
         guard shouldAnimate else {
             leftSidebar.frame = frames.leftSidebar
             rightSidebar.frame = frames.rightSidebar
-            tileContainer.frame = frames.tileContainer
+            displayedTileContainer?.frame = frames.tileContainer
             leftSidebar.alphaValue = isLeftSidebarVisible ? 1 : 0
             rightSidebar.alphaValue = isRightSidebarVisible ? 1 : 0
             leftSidebar.isHidden = !isLeftSidebarVisible
@@ -203,7 +241,7 @@ final class MainContentView: NSView {
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             leftSidebar.animator().frame = frames.leftSidebar
             rightSidebar.animator().frame = frames.rightSidebar
-            tileContainer.animator().frame = frames.tileContainer
+            displayedTileContainer?.animator().frame = frames.tileContainer
             leftSidebar.animator().alphaValue = isLeftSidebarVisible ? 1 : 0
             rightSidebar.animator().alphaValue = isRightSidebarVisible ? 1 : 0
         } completionHandler: {
@@ -227,6 +265,153 @@ final class MainContentView: NSView {
             tileContainer: NSRect(x: tileX, y: 0, width: tileWidth, height: bounds.height),
             rightSidebar: NSRect(x: rightX, y: 0, width: rightWidth, height: bounds.height)
         )
+    }
+
+    private func configureWorkspaceCallbacks() {
+        leftSidebar.onSelectWorkspace = { [weak self] workspace in
+            self?.workspaceStore.setActive(workspace.id)
+        }
+        leftSidebar.onAddRoot = { [weak self] in
+            self?.workspaceStore.addRoot()
+        }
+        leftSidebar.onAddChild = { [weak self] workspace in
+            self?.workspaceStore.addChild(parent: workspace)
+        }
+        leftSidebar.onSettings = { [weak self] workspace in
+            self?.showSettings(for: workspace)
+        }
+        leftSidebar.onDelete = { [weak self] workspace, anchorView in
+            self?.confirmDelete(workspace, anchoredTo: anchorView)
+        }
+        workspaceStore.onChange = { [weak self] in
+            self?.leftSidebar.reloadData()
+        }
+        workspaceStore.onActiveWorkspaceChanged = { [weak self] workspace in
+            self?.showWorkspace(workspace)
+        }
+    }
+
+    private func showWorkspace(_ workspace: Workspace) {
+        if displayedTileContainer !== workspace.tileContainer {
+            displayedTileContainer?.removeFromSuperview()
+            addSubview(workspace.tileContainer, positioned: .below, relativeTo: rightSidebar)
+            displayedTileContainer = workspace.tileContainer
+        }
+
+        applyLayout(animated: false)
+        onActiveTileContainerChanged?(workspace.tileContainer)
+        focusRestoreGeneration += 1
+        let generation = focusRestoreGeneration
+        let workspaceID = workspace.id
+        DispatchQueue.main.async { [weak self, weak workspace] in
+            guard
+                let self,
+                let workspace,
+                self.focusRestoreGeneration == generation,
+                self.workspaceStore.activeID == workspaceID
+            else {
+                return
+            }
+
+            workspace.tileContainer.restoreFocus()
+        }
+    }
+
+    private func confirmDelete(_ workspace: Workspace, anchoredTo anchorView: NSView) {
+        let terminalCount = workspaceStore.subtreeTerminalCount(for: workspace)
+        let childNames = workspaceStore.subtreeWorkspaceNames(for: workspace)
+
+        guard terminalCount > 0 || !childNames.isEmpty else {
+            workspaceStore.delete(workspace)
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Close \"\(workspace.name)\"?"
+        alert.addButton(withTitle: "Close Workspace")
+        alert.addButton(withTitle: "Cancel")
+        alert.accessoryView = deleteWarningView(childNames: childNames, terminalCount: terminalCount)
+
+        guard let window else {
+            if alert.runModal() == .alertFirstButtonReturn {
+                workspaceStore.delete(workspace)
+            }
+            return
+        }
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else {
+                return
+            }
+            self?.workspaceStore.delete(workspace)
+        }
+    }
+
+    private func showSettings(for workspace: Workspace) {
+        let settingsView = WorkspaceSettingsDialogView(workspace: workspace)
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Workspace Settings"
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.accessoryView = settingsView
+
+        guard let window else {
+            if alert.runModal() == .alertFirstButtonReturn {
+                workspaceStore.rename(workspace, to: settingsView.workspaceName)
+                workspace.defaultDirectory = settingsView.defaultDirectory
+                leftSidebar.reloadData()
+            }
+            return
+        }
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else {
+                return
+            }
+            self?.workspaceStore.rename(workspace, to: settingsView.workspaceName)
+            workspace.defaultDirectory = settingsView.defaultDirectory
+            self?.leftSidebar.reloadData()
+        }
+
+        DispatchQueue.main.async {
+            settingsView.focusField(in: alert.window)
+        }
+    }
+
+    private func deleteWarningView(childNames: [String], terminalCount: Int) -> NSView {
+        let text = NSMutableAttributedString()
+        if !childNames.isEmpty {
+            text.append(NSAttributedString(string: "This will also close child workspaces \(formattedList(childNames)), terminating "))
+        } else {
+            text.append(NSAttributedString(string: "This will terminate "))
+        }
+        text.append(NSAttributedString(
+            string: "\(terminalCount)",
+            attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold)]
+        ))
+        text.append(NSAttributedString(string: " running \(terminalCount == 1 ? "terminal" : "terminals") in total."))
+
+        let label = NSTextField(labelWithAttributedString: text)
+        label.maximumNumberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.frame = NSRect(x: 0, y: 0, width: 360, height: 48)
+        return label
+    }
+
+    private func formattedList(_ names: [String]) -> String {
+        switch names.count {
+        case 0:
+            return ""
+        case 1:
+            return names[0]
+        case 2:
+            return "\(names[0]) and \(names[1])"
+        default:
+            let head = names.dropLast().joined(separator: ", ")
+            return "\(head), and \(names[names.count - 1])"
+        }
     }
 }
 

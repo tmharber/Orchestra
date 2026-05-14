@@ -72,6 +72,27 @@ enum MainMenuBuilder {
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
 
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(
+            withTitle: "Copy",
+            action: #selector(NSText.copy(_:)),
+            keyEquivalent: "c"
+        )
+        editMenu.addItem(
+            withTitle: "Paste",
+            action: #selector(NSText.paste(_:)),
+            keyEquivalent: "v"
+        )
+        editMenu.addItem(.separator())
+        editMenu.addItem(
+            withTitle: "Select All",
+            action: #selector(NSText.selectAll(_:)),
+            keyEquivalent: "a"
+        )
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
         viewMenu.addItem(
@@ -87,6 +108,14 @@ enum MainMenuBuilder {
         )
         splitDown.keyEquivalentModifierMask = [.command, .shift]
         viewMenu.addItem(splitDown)
+        viewMenu.addItem(.separator())
+        let allowMouseReporting = NSMenuItem(
+            title: "Allow Terminal Mouse Reporting",
+            action: #selector(MainWindowController.toggleActiveTerminalMouseReporting(_:)),
+            keyEquivalent: "o"
+        )
+        allowMouseReporting.keyEquivalentModifierMask = [.command, .option]
+        viewMenu.addItem(allowMouseReporting)
         viewMenu.addItem(.separator())
         viewMenu.addItem(
             withTitle: "Toggle Left Sidebar",

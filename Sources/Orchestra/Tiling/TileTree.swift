@@ -20,6 +20,10 @@ final class TileTree {
         root = .leaf(id: id)
     }
 
+    func removeAll() {
+        root = nil
+    }
+
     func splitLeaf(id: UUID, edge: SplitInsertionEdge, newID: UUID) -> Bool {
         guard var root else {
             return false

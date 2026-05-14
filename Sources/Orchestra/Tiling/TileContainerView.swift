@@ -9,6 +9,16 @@ final class TileContainerView: NSView {
     private(set) var activePaneID: UUID?
     private let emptyStateLabel = NSTextField(labelWithString: "No sessions.\nPress '+' to get started")
     var onSplitModeChanged: ((Bool) -> Void)?
+    var onTerminalCountChanged: ((Int) -> Void)?
+    var defaultDirectory = ""
+
+    var terminalCount: Int {
+        terminalManager.runningCount
+    }
+
+    var paneCount: Int {
+        terminalManager.count
+    }
 
     var isSplitModeActive: Bool {
         splitOverlay != nil
@@ -21,6 +31,9 @@ final class TileContainerView: NSView {
 
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        terminalManager.onRunningCountChanged = { [weak self] count in
+            self?.onTerminalCountChanged?(count)
+        }
         configureEmptyStateLabel()
         updateEmptyState()
     }
@@ -92,6 +105,49 @@ final class TileContainerView: NSView {
         layoutTileTree()
     }
 
+    func restoreFocus() {
+        guard
+            let targetID = activePaneID ?? tree.firstLeafID(),
+            let pane = terminalManager.pane(id: targetID)
+        else {
+            return
+        }
+
+        activePaneID = pane.id
+        setActivePane(pane.id)
+        window?.makeFirstResponder(pane.terminalView)
+    }
+
+    func terminateAll() {
+        exitSplitMode()
+        resizeHandles.forEach { $0.removeFromSuperview() }
+        resizeHandles.removeAll()
+        nodeFrames.removeAll()
+        tree.removeAll()
+        activePaneID = nil
+        terminalManager.removeAll(terminating: true)
+        layoutTileTree()
+        updateEmptyState()
+    }
+
+    var activePaneAllowsTerminalMouseReporting: Bool {
+        guard let activePaneID, let pane = terminalManager.pane(id: activePaneID) else {
+            return false
+        }
+
+        return pane.terminalView.allowMouseReporting
+    }
+
+    func toggleActivePaneMouseReporting() {
+        guard let activePaneID, let pane = terminalManager.pane(id: activePaneID) else {
+            NSSound.beep()
+            return
+        }
+
+        pane.terminalView.allowMouseReporting.toggle()
+        window?.makeFirstResponder(pane.terminalView)
+    }
+
     func frame(for splitID: UUID) -> NSRect? {
         nodeFrames[splitID]
     }
@@ -102,7 +158,7 @@ final class TileContainerView: NSView {
     }
 
     private func createInitialPane() {
-        let pane = terminalManager.makePane()
+        let pane = terminalManager.makePane(currentDirectory: newPaneDirectory(fallback: NSHomeDirectory()))
         tree.setRoot(id: pane.id)
         activePaneID = pane.id
         addPane(pane)
@@ -111,8 +167,14 @@ final class TileContainerView: NSView {
     }
 
     private func splitPane(id: UUID, edge: SplitInsertionEdge) {
-        let currentDirectory = terminalManager.pane(id: id)?.currentDirectory ?? NSHomeDirectory()
-        let newPane = terminalManager.makePane(currentDirectory: currentDirectory)
+        let fallbackDirectory: String
+        if let pane = terminalManager.pane(id: id), pane.hasReportedCurrentDirectory {
+            fallbackDirectory = pane.currentDirectory
+        } else {
+            fallbackDirectory = NSHomeDirectory()
+        }
+
+        let newPane = terminalManager.makePane(currentDirectory: newPaneDirectory(fallback: fallbackDirectory))
         addPane(newPane)
 
         guard tree.splitLeaf(id: id, edge: edge, newID: newPane.id) else {
@@ -127,8 +189,15 @@ final class TileContainerView: NSView {
     private func exitSplitMode() {
         splitOverlay?.removeFromSuperview()
         splitOverlay = nil
-        window?.makeFirstResponder(terminalManager.pane(id: activePaneID ?? UUID())?.terminalView)
+        if let activePaneID, let pane = terminalManager.pane(id: activePaneID) {
+            window?.makeFirstResponder(pane.terminalView)
+        }
         onSplitModeChanged?(false)
+    }
+
+    private func newPaneDirectory(fallback: String) -> String {
+        let trimmed = defaultDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        return DirectoryResolver.existingDirectory(trimmed.isEmpty ? fallback : trimmed, fallback: fallback)
     }
 
     private func addPane(_ pane: TerminalPaneView) {
@@ -225,7 +294,7 @@ final class TileContainerView: NSView {
             return
 
         case .split(let splitID, let axis, let first, let second, let ratio):
-            let divider: CGFloat = 8
+            let divider = TileLayoutMetrics.dividerSize
 
             switch axis {
             case .horizontal:

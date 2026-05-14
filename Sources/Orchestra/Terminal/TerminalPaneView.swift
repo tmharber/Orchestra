@@ -5,9 +5,20 @@ final class TerminalPaneView: NSView {
     let id = UUID()
     let terminalView = LocalProcessTerminalView(frame: .zero)
     private(set) var currentDirectory: String
+    private(set) var hasReportedCurrentDirectory = false
+    private(set) var isProcessRunning = false {
+        didSet {
+            guard oldValue != isProcessRunning else {
+                return
+            }
+
+            onRunningStateChanged?(isProcessRunning)
+        }
+    }
 
     var onClose: ((UUID) -> Void)?
     var onFocus: ((UUID) -> Void)?
+    var onRunningStateChanged: ((Bool) -> Void)?
 
     var isActive = false {
         didSet {
@@ -48,8 +59,9 @@ final class TerminalPaneView: NSView {
     private var bellInterceptor: BellInterceptingTerminalDelegate?
 
     init(frame frameRect: NSRect = .zero, currentDirectory: String = NSHomeDirectory()) {
-        self.currentDirectory = currentDirectory
-        currentFolderName = URL(fileURLWithPath: currentDirectory).lastPathComponent
+        let resolvedDirectory = DirectoryResolver.existingDirectory(currentDirectory, fallback: NSHomeDirectory())
+        self.currentDirectory = resolvedDirectory
+        currentFolderName = URL(fileURLWithPath: resolvedDirectory).lastPathComponent
         super.init(frame: frameRect)
 
         wantsLayer = true
@@ -91,6 +103,7 @@ final class TerminalPaneView: NSView {
 
         terminalView.autoresizingMask = [.width, .height]
         terminalView.font = TerminalFontProvider.preferredFont()
+        terminalView.allowMouseReporting = false
         terminalView.processDelegate = self
 
         if let wrapped = terminalView.terminalDelegate {
@@ -204,12 +217,17 @@ final class TerminalPaneView: NSView {
         onClose?(id)
     }
 
+    func terminateProcess() {
+        terminalView.terminate()
+    }
+
     private func startProcessIfReady() {
         guard window != nil, !didStartProcess, terminalView.bounds.width > 0, terminalView.bounds.height > 0 else {
             return
         }
 
         didStartProcess = true
+        isProcessRunning = true
         processStatus = nil
         restartButton.isHidden = true
         updateTitle()
@@ -366,12 +384,14 @@ extension TerminalPaneView: LocalProcessTerminalViewDelegate {
         }
 
         currentDirectory = directoryPath
+        hasReportedCurrentDirectory = true
         currentFolderName = URL(fileURLWithPath: directoryPath).lastPathComponent
         updateTitle()
     }
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         didStartProcess = false
+        isProcessRunning = false
         processStatus = exitCode.map { "Exited \($0)" } ?? "Exited"
         restartButton.isHidden = false
         updateTitle()

@@ -7,7 +7,6 @@ final class TileResizeHandle: NSView {
     private let onResize: (UUID, CGFloat) -> Void
     private let onResizeEnded: () -> Void
     private let minimumPaneSize = NSSize(width: 200, height: 100)
-    private let dividerSize: CGFloat = 8
 
     init(
         axis: SplitAxis,
@@ -52,13 +51,23 @@ final class TileResizeHandle: NSView {
         updateRatio(with: event, parentFrame: parentFrame, in: container)
 
         while true {
-            guard let nextEvent = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else {
+            guard let nextEvent = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp, .keyDown]) else {
                 return
             }
 
             if nextEvent.type == .leftMouseUp {
                 onResizeEnded()
                 return
+            }
+
+            if nextEvent.type == .keyDown {
+                guard nextEvent.keyCode != 53 else {
+                    onResizeEnded()
+                    return
+                }
+
+                NSApp.sendEvent(nextEvent)
+                continue
             }
 
             updateRatio(with: nextEvent, parentFrame: parentFrame, in: container)
@@ -73,7 +82,7 @@ final class TileResizeHandle: NSView {
     private func ratio(for point: NSPoint, parentFrame: NSRect) -> CGFloat {
         switch axis {
         case .horizontal:
-            let span = max(parentFrame.width - dividerSize, 1)
+            let span = max(parentFrame.width - TileLayoutMetrics.dividerSize, 1)
             let minimumRatio = minimumPaneSize.width / span
             guard minimumRatio < 0.5 else {
                 return 0.5
@@ -81,7 +90,7 @@ final class TileResizeHandle: NSView {
 
             return ((point.x - parentFrame.minX) / span).clamped(to: minimumRatio...(1 - minimumRatio))
         case .vertical:
-            let span = max(parentFrame.height - dividerSize, 1)
+            let span = max(parentFrame.height - TileLayoutMetrics.dividerSize, 1)
             let minimumRatio = minimumPaneSize.height / span
             guard minimumRatio < 0.5 else {
                 return 0.5
@@ -90,6 +99,10 @@ final class TileResizeHandle: NSView {
             return ((parentFrame.maxY - point.y) / span).clamped(to: minimumRatio...(1 - minimumRatio))
         }
     }
+}
+
+enum TileLayoutMetrics {
+    static let dividerSize: CGFloat = 8
 }
 
 private extension CGFloat {
