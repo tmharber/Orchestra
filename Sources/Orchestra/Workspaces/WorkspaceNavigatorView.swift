@@ -1,9 +1,9 @@
 import AppKit
 
-final class WorkspaceNavigatorView: NSView {
+final class WorkspaceNavigatorView: NSVisualEffectView {
     private let store: WorkspaceStore
     private let titleLabel = NSTextField(labelWithString: "Workspaces")
-    private let addRootButton = NSButton()
+    private let addRootButton = SidebarHeaderButton()
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("WorkspaceColumn"))
@@ -17,15 +17,18 @@ final class WorkspaceNavigatorView: NSView {
     init(store: WorkspaceStore) {
         self.store = store
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        material = .sidebar
+        blendingMode = .behindWindow
+        state = .followsWindowActiveState
 
-        titleLabel.font = .systemFont(ofSize: 18, weight: .bold)
-        titleLabel.textColor = .labelColor
+        titleLabel.attributedStringValue = .tracked(
+            "Workspaces",
+            font: DS.Typography.sidebarTitle(),
+            color: .labelColor,
+            tracking: -0.3
+        )
 
-        addRootButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add workspace")
-        addRootButton.imagePosition = .imageOnly
-        addRootButton.isBordered = false
+        addRootButton.symbolName = "plus"
         addRootButton.target = self
         addRootButton.action = #selector(addRoot(_:))
         addRootButton.toolTip = "Add workspace"
@@ -34,9 +37,9 @@ final class WorkspaceNavigatorView: NSView {
         outlineView.outlineTableColumn = column
         column.minWidth = 0
         outlineView.headerView = nil
-        outlineView.rowHeight = 30
+        outlineView.rowHeight = DS.Metrics.rowHeight
         outlineView.intercellSpacing = NSSize(width: 0, height: 2)
-        outlineView.indentationPerLevel = 12
+        outlineView.indentationPerLevel = 14
         outlineView.selectionHighlightStyle = .none
         outlineView.backgroundColor = .clear
         outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -66,24 +69,32 @@ final class WorkspaceNavigatorView: NSView {
     override func layout() {
         super.layout()
 
-        let headerHeight: CGFloat = 52
-        let titleHeight: CGFloat = 22
-        let buttonSize: CGFloat = 24
-        let headerTopPadding: CGFloat = 14
-        let headerY = bounds.height - buttonSize - headerTopPadding
+        let inset = DS.Metrics.sidebarInset
+        let headerHeight = DS.Metrics.sidebarHeaderHeight
+        let buttonSize: CGFloat = 26
+        let titleHeight: CGFloat = 28
+        let titleBaseline: CGFloat = 18
+
         titleLabel.frame = NSRect(
-            x: 14,
-            y: headerY + floor((buttonSize - titleHeight) / 2),
-            width: max(0, bounds.width - 14 - buttonSize - 12),
+            x: inset,
+            y: bounds.height - titleBaseline - titleHeight,
+            width: max(0, bounds.width - inset - buttonSize - 12),
             height: titleHeight
         )
+
         addRootButton.frame = NSRect(
-            x: bounds.width - buttonSize - 10,
-            y: headerY,
+            x: bounds.width - buttonSize - inset + 4,
+            y: titleLabel.frame.midY - buttonSize / 2,
             width: buttonSize,
             height: buttonSize
         )
-        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - headerHeight))
+
+        scrollView.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: max(0, bounds.height - headerHeight)
+        )
         let contentWidth = max(0, scrollView.contentView.bounds.width)
         scrollView.contentView.bounds.origin.x = 0
         outlineView.frame.size.width = contentWidth
@@ -123,6 +134,73 @@ final class WorkspaceNavigatorView: NSView {
             return
         }
         outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+    }
+}
+
+final class SidebarHeaderButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false { didSet { updateAppearance() } }
+
+    var symbolName: String = "plus" {
+        didSet {
+            let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+            image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(config)
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.cornerCurve = .continuous
+        isBordered = false
+        bezelStyle = .smallSquare
+        imagePosition = .imageOnly
+        contentTintColor = .secondaryLabelColor
+
+        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
+        image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+    }
+
+    private func updateAppearance() {
+        if isHovered {
+            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
+            contentTintColor = .labelColor
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            contentTintColor = .secondaryLabelColor
+        }
     }
 }
 

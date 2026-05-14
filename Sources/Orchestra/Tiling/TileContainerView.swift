@@ -7,7 +7,11 @@ final class TileContainerView: NSView {
     private var splitOverlay: TileSplitModeOverlayView?
     private var nodeFrames: [UUID: NSRect] = [:]
     private(set) var activePaneID: UUID?
-    private let emptyStateLabel = NSTextField(labelWithString: "No sessions.\nPress '+' to get started")
+    private let emptyStateContainer = NSView()
+    private let emptyStateIcon = NSImageView()
+    private let emptyStatePrimary = NSTextField(labelWithString: "No terminals yet")
+    private let emptyStateSecondary = NSTextField(labelWithString: "")
+    private let emptyStateShortcut = KeyboardShortcutBadge(text: "⌘T")
     var onSplitModeChanged: ((Bool) -> Void)?
     var onTerminalCountChanged: ((Int) -> Void)?
     var defaultDirectory = ""
@@ -30,7 +34,7 @@ final class TileContainerView: NSView {
         super.init(frame: frameRect)
 
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.backgroundColor = DS.Palette.tileGutter.cgColor
         terminalManager.onRunningCountChanged = { [weak self] count in
             self?.onTerminalCountChanged?(count)
         }
@@ -238,11 +242,11 @@ final class TileContainerView: NSView {
 
         if animated && window != nil {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 self.layout(
                     node: root,
-                    in: self.bounds.insetBy(dx: 6, dy: 6),
+                    in: self.bounds.insetBy(dx: DS.Metrics.tileInset, dy: DS.Metrics.tileInset),
                     animated: true,
                     appearingPaneID: appearingPaneID,
                     rebuildHandles: rebuildHandles
@@ -251,7 +255,7 @@ final class TileContainerView: NSView {
         } else {
             layout(
                 node: root,
-                in: bounds.insetBy(dx: 6, dy: 6),
+                in: bounds.insetBy(dx: DS.Metrics.tileInset, dy: DS.Metrics.tileInset),
                 animated: false,
                 appearingPaneID: nil,
                 rebuildHandles: rebuildHandles
@@ -278,7 +282,7 @@ final class TileContainerView: NSView {
                 return
             }
 
-            let targetFrame = frame.insetBy(dx: 3, dy: 3)
+            let targetFrame = frame.insetBy(dx: 1, dy: 1)
             if animated {
                 if paneID == appearingPaneID {
                     pane.alphaValue = 0
@@ -424,31 +428,128 @@ final class TileContainerView: NSView {
     }
 
     private func configureEmptyStateLabel() {
-        emptyStateLabel.font = .systemFont(ofSize: 18, weight: .medium)
-        emptyStateLabel.textColor = .secondaryLabelColor
-        emptyStateLabel.alignment = .center
-        emptyStateLabel.maximumNumberOfLines = 2
-        emptyStateLabel.lineBreakMode = .byWordWrapping
-        emptyStateLabel.isHidden = true
-        addSubview(emptyStateLabel)
+        emptyStateContainer.wantsLayer = true
+        emptyStateContainer.isHidden = true
+
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 28, weight: .light)
+        emptyStateIcon.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconConfig)
+        emptyStateIcon.contentTintColor = NSColor.tertiaryLabelColor
+        emptyStateIcon.imageScaling = .scaleProportionallyDown
+
+        emptyStatePrimary.font = DS.Typography.emptyStatePrimary()
+        emptyStatePrimary.textColor = .secondaryLabelColor
+        emptyStatePrimary.alignment = .center
+
+        let secondary = NSMutableAttributedString()
+        secondary.append(NSAttributedString(
+            string: "Press ",
+            attributes: [
+                .font: DS.Typography.emptyStateSecondary(),
+                .foregroundColor: NSColor.tertiaryLabelColor
+            ]
+        ))
+        secondary.append(NSAttributedString(
+            string: " to add a terminal",
+            attributes: [
+                .font: DS.Typography.emptyStateSecondary(),
+                .foregroundColor: NSColor.tertiaryLabelColor
+            ]
+        ))
+        emptyStateSecondary.attributedStringValue = secondary
+        emptyStateSecondary.alignment = .center
+
+        emptyStateContainer.addSubview(emptyStateIcon)
+        emptyStateContainer.addSubview(emptyStatePrimary)
+        emptyStateContainer.addSubview(emptyStateShortcut)
+        emptyStateContainer.addSubview(emptyStateSecondary)
+        addSubview(emptyStateContainer)
     }
 
     private func layoutEmptyState() {
-        let size = emptyStateLabel.sizeThatFits(NSSize(width: max(0, bounds.width - 48), height: .greatestFiniteMagnitude))
-        emptyStateLabel.frame = NSRect(
-            x: (bounds.width - size.width) / 2,
-            y: (bounds.height - size.height) / 2,
-            width: size.width,
-            height: size.height
+        let containerWidth: CGFloat = 280
+        let iconHeight: CGFloat = 38
+        let titleHeight: CGFloat = 22
+        let captionHeight: CGFloat = 18
+        let badgeHeight: CGFloat = 22
+        let gap: CGFloat = 8
+        let totalHeight = iconHeight + 16 + titleHeight + 12 + captionHeight + badgeHeight
+        emptyStateContainer.frame = NSRect(
+            x: (bounds.width - containerWidth) / 2,
+            y: (bounds.height - totalHeight) / 2,
+            width: containerWidth,
+            height: totalHeight
+        )
+
+        let cw = emptyStateContainer.bounds.width
+        var y = totalHeight - iconHeight
+        emptyStateIcon.frame = NSRect(x: (cw - 36) / 2, y: y, width: 36, height: iconHeight)
+        y -= (16 + titleHeight)
+        emptyStatePrimary.frame = NSRect(x: 0, y: y, width: cw, height: titleHeight)
+        y -= (12 + badgeHeight)
+
+        let badgeWidth = emptyStateShortcut.intrinsicContentSize.width
+        let captionPart1Width = NSString(string: "Press ").size(withAttributes: [.font: DS.Typography.emptyStateSecondary()]).width
+        let captionPart2Width = NSString(string: " to add a terminal").size(withAttributes: [.font: DS.Typography.emptyStateSecondary()]).width
+        let captionLineWidth = captionPart1Width + badgeWidth + captionPart2Width + (gap * 0)
+        let captionX = (cw - captionLineWidth) / 2
+
+        let badgeY = y + (badgeHeight - badgeHeight) / 2
+        emptyStateShortcut.frame = NSRect(
+            x: captionX + captionPart1Width,
+            y: badgeY,
+            width: badgeWidth,
+            height: badgeHeight
+        )
+
+        emptyStateSecondary.frame = NSRect(
+            x: 0,
+            y: y + (badgeHeight - captionHeight) / 2,
+            width: cw,
+            height: captionHeight
         )
     }
 
     private func updateEmptyState() {
         let isEmpty = tree.isEmpty
-        emptyStateLabel.isHidden = !isEmpty
+        emptyStateContainer.isHidden = !isEmpty
         if isEmpty {
-            addSubview(emptyStateLabel, positioned: .above, relativeTo: nil)
+            addSubview(emptyStateContainer, positioned: .above, relativeTo: nil)
             layoutEmptyState()
         }
+    }
+}
+
+final class KeyboardShortcutBadge: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    init(text: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.quaternaryLabelColor.cgColor
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.04).cgColor
+
+        label.stringValue = text
+        label.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        addSubview(label)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let textSize = label.intrinsicContentSize
+        return NSSize(width: textSize.width + 14, height: 22)
+    }
+
+    override func layout() {
+        super.layout()
+        label.frame = bounds.insetBy(dx: 6, dy: 2)
     }
 }

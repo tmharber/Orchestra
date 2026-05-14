@@ -21,6 +21,8 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
     private func configureWindow() {
         window?.contentView = contentView
         window?.center()
+        window?.titlebarSeparatorStyle = .none
+        window?.titlebarAppearsTransparent = true
         installToolbar()
         contentView.onActiveTileContainerChanged = { [weak self] tileContainer in
             self?.observeTileContainer(tileContainer)
@@ -89,17 +91,21 @@ final class MainWindowController: NSWindowController, NSToolbarDelegate {
             item.label = "Add Terminal"
             item.paletteLabel = "Add Terminal"
             item.toolTip = "Add terminal"
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+            let image = (NSImage(systemSymbolName: "plus", accessibilityDescription: "Add terminal") ?? NSImage())
+                .withSymbolConfiguration(symbolConfig) ?? NSImage()
             let button = NSButton(
-                image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add terminal") ?? NSImage(),
+                image: image,
                 target: self,
                 action: #selector(toggleSplitMode(_:))
             )
             button.setButtonType(.toggle)
-            button.bezelStyle = .texturedRounded
+            button.bezelStyle = .accessoryBarAction
+            button.isBordered = true
             button.toolTip = "Add terminal"
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.widthAnchor.constraint(equalToConstant: 32).isActive = true
-            button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 24).isActive = true
             item.view = button
             addTerminalButton = button
             updateAddTerminalButton(isActive: contentView.activeTileContainer.isSplitModeActive)
@@ -157,10 +163,12 @@ private extension NSToolbarItem.Identifier {
 }
 
 final class MainContentView: NSView {
-    private let sidebarWidth: CGFloat = 280
+    private let sidebarWidth: CGFloat = DS.Metrics.sidebarWidth
     private let workspaceStore = WorkspaceStore()
     private let leftSidebar: WorkspaceNavigatorView
     private let rightSidebar = SidebarPlaceholderView(title: "Context", detail: "Notes and shared context")
+    private let leftDivider = MainContentView.makeDivider()
+    private let rightDivider = MainContentView.makeDivider()
     private weak var displayedTileContainer: TileContainerView?
     private var focusRestoreGeneration = 0
     var onActiveTileContainerChanged: ((TileContainerView) -> Void)?
@@ -200,7 +208,16 @@ final class MainContentView: NSView {
         addSubview(activeTileContainer)
         addSubview(leftSidebar)
         addSubview(rightSidebar)
+        addSubview(leftDivider)
+        addSubview(rightDivider)
         displayedTileContainer = activeTileContainer
+    }
+
+    private static func makeDivider() -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = DS.Palette.sidebarDivider.cgColor
+        return view
     }
 
     required init?(coder: NSCoder) {
@@ -218,40 +235,59 @@ final class MainContentView: NSView {
 
         if isLeftSidebarVisible {
             leftSidebar.isHidden = false
+            leftDivider.isHidden = false
         }
 
         if isRightSidebarVisible {
             rightSidebar.isHidden = false
+            rightDivider.isHidden = false
         }
 
         guard shouldAnimate else {
             leftSidebar.frame = frames.leftSidebar
             rightSidebar.frame = frames.rightSidebar
+            leftDivider.frame = frames.leftDivider
+            rightDivider.frame = frames.rightDivider
             displayedTileContainer?.frame = frames.tileContainer
             leftSidebar.alphaValue = isLeftSidebarVisible ? 1 : 0
             rightSidebar.alphaValue = isRightSidebarVisible ? 1 : 0
+            leftDivider.alphaValue = isLeftSidebarVisible ? 1 : 0
+            rightDivider.alphaValue = isRightSidebarVisible ? 1 : 0
             leftSidebar.isHidden = !isLeftSidebarVisible
             rightSidebar.isHidden = !isRightSidebarVisible
+            leftDivider.isHidden = !isLeftSidebarVisible
+            rightDivider.isHidden = !isRightSidebarVisible
             return
         }
 
         layoutSubtreeIfNeeded()
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.18
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             leftSidebar.animator().frame = frames.leftSidebar
             rightSidebar.animator().frame = frames.rightSidebar
+            leftDivider.animator().frame = frames.leftDivider
+            rightDivider.animator().frame = frames.rightDivider
             displayedTileContainer?.animator().frame = frames.tileContainer
             leftSidebar.animator().alphaValue = isLeftSidebarVisible ? 1 : 0
             rightSidebar.animator().alphaValue = isRightSidebarVisible ? 1 : 0
+            leftDivider.animator().alphaValue = isLeftSidebarVisible ? 1 : 0
+            rightDivider.animator().alphaValue = isRightSidebarVisible ? 1 : 0
         } completionHandler: {
             self.leftSidebar.isHidden = !self.isLeftSidebarVisible
             self.rightSidebar.isHidden = !self.isRightSidebarVisible
+            self.leftDivider.isHidden = !self.isLeftSidebarVisible
+            self.rightDivider.isHidden = !self.isRightSidebarVisible
         }
     }
 
-    private func targetFrames() -> (leftSidebar: NSRect, tileContainer: NSRect, rightSidebar: NSRect) {
-
+    private func targetFrames() -> (
+        leftSidebar: NSRect,
+        leftDivider: NSRect,
+        tileContainer: NSRect,
+        rightDivider: NSRect,
+        rightSidebar: NSRect
+    ) {
         let leftWidth = isLeftSidebarVisible ? sidebarWidth : 0
         let rightWidth = isRightSidebarVisible ? sidebarWidth : 0
         let dividerWidth: CGFloat = 1
@@ -262,7 +298,9 @@ final class MainContentView: NSView {
 
         return (
             leftSidebar: NSRect(x: 0, y: 0, width: leftWidth, height: bounds.height),
+            leftDivider: NSRect(x: leftWidth, y: 0, width: dividerWidth, height: bounds.height),
             tileContainer: NSRect(x: tileX, y: 0, width: tileWidth, height: bounds.height),
+            rightDivider: NSRect(x: rightX - dividerWidth, y: 0, width: dividerWidth, height: bounds.height),
             rightSidebar: NSRect(x: rightX, y: 0, width: rightWidth, height: bounds.height)
         )
     }
@@ -415,25 +453,35 @@ final class MainContentView: NSView {
     }
 }
 
-final class SidebarPlaceholderView: NSView {
+final class SidebarPlaceholderView: NSVisualEffectView {
+    private let eyebrowLabel = NSTextField(labelWithString: "")
     private let titleLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
 
     init(title: String, detail: String) {
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        material = .sidebar
+        blendingMode = .behindWindow
+        state = .followsWindowActiveState
 
-        titleLabel.stringValue = title
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        eyebrowLabel.attributedStringValue = .tracked(
+            title.uppercased(),
+            font: DS.Typography.eyebrow(),
+            color: NSColor.tertiaryLabelColor,
+            tracking: 1.4
+        )
+
+        titleLabel.stringValue = "Coming Soon"
+        titleLabel.font = DS.Typography.sidebarTitle()
         titleLabel.textColor = .labelColor
 
         detailLabel.stringValue = detail
-        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.font = DS.Typography.emptyStateSecondary()
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 0
 
+        addSubview(eyebrowLabel)
         addSubview(titleLabel)
         addSubview(detailLabel)
     }
@@ -445,18 +493,25 @@ final class SidebarPlaceholderView: NSView {
     override func layout() {
         super.layout()
 
-        let padding: CGFloat = 16
+        let padding = DS.Metrics.sidebarInset
+        let topInset: CGFloat = 32
+        eyebrowLabel.frame = NSRect(
+            x: padding,
+            y: bounds.height - topInset,
+            width: max(0, bounds.width - padding * 2),
+            height: 14
+        )
         titleLabel.frame = NSRect(
             x: padding,
-            y: bounds.height - padding - 20,
+            y: bounds.height - topInset - 26,
             width: max(0, bounds.width - padding * 2),
-            height: 20
+            height: 22
         )
         detailLabel.frame = NSRect(
             x: padding,
-            y: bounds.height - padding - 76,
+            y: bounds.height - topInset - 80,
             width: max(0, bounds.width - padding * 2),
-            height: 44
+            height: 48
         )
     }
 }

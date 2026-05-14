@@ -13,6 +13,7 @@ final class TerminalPaneView: NSView {
             }
 
             onRunningStateChanged?(isProcessRunning)
+            updateActivityDot()
         }
     }
 
@@ -46,10 +47,13 @@ final class TerminalPaneView: NSView {
         }
     }
 
+    private let titleBar = NSView()
+    private let titleBarBottomLine = NSView()
+    private let activityDot = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let renameField = RenameTextField(frame: .zero)
-    private let closeButton = NSButton()
-    private let restartButton = NSButton()
+    private let closeButton = PaneChromeButton()
+    private let restartButton = PaneChromeButton()
     private let maximumPaneNameLength = 80
     private var paneName = "Terminal"
     private var currentFolderName: String
@@ -65,16 +69,28 @@ final class TerminalPaneView: NSView {
         super.init(frame: frameRect)
 
         wantsLayer = true
-        layer?.cornerRadius = 6
+        layer?.cornerRadius = DS.Metrics.paneCornerRadius
+        layer?.cornerCurve = .continuous
         layer?.borderWidth = 1
+        layer?.masksToBounds = true
         layer?.backgroundColor = NSColor.black.cgColor
 
-        titleLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        titleBar.wantsLayer = true
+        titleBar.layer?.backgroundColor = DS.Palette.paneTitleBarFill.cgColor
+
+        titleBarBottomLine.wantsLayer = true
+        titleBarBottomLine.layer?.backgroundColor = DS.Palette.paneTitleBarBorder.cgColor
+
+        activityDot.wantsLayer = true
+        activityDot.layer?.cornerRadius = 3
+        activityDot.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.85).cgColor
+
+        titleLabel.font = DS.Typography.paneTitle()
         titleLabel.textColor = .secondaryLabelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(beginRenamingFromClick(_:))))
 
-        renameField.font = .systemFont(ofSize: 11, weight: .medium)
+        renameField.font = DS.Typography.paneTitle()
         renameField.isHidden = true
         renameField.maximumLength = maximumPaneNameLength
         renameField.onCommit = { [weak self] name in
@@ -84,21 +100,16 @@ final class TerminalPaneView: NSView {
             self?.cancelRename()
         }
 
-        closeButton.bezelStyle = .circular
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close terminal")
-        closeButton.imagePosition = .imageOnly
-        closeButton.isBordered = false
+        closeButton.symbolName = "xmark"
+        closeButton.toolTip = "Close terminal"
         closeButton.target = self
         closeButton.action = #selector(closePane(_:))
         closeButton.isHidden = true
 
-        restartButton.bezelStyle = .circular
-        restartButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Restart terminal")
-        restartButton.imagePosition = .imageOnly
-        restartButton.isBordered = false
+        restartButton.symbolName = "arrow.clockwise"
+        restartButton.toolTip = "Restart terminal"
         restartButton.target = self
         restartButton.action = #selector(restartPane(_:))
-        restartButton.toolTip = "Restart terminal"
         restartButton.isHidden = true
 
         terminalView.autoresizingMask = [.width, .height]
@@ -116,13 +127,17 @@ final class TerminalPaneView: NSView {
             terminalView.terminalDelegate = interceptor
         }
 
-        addSubview(titleLabel)
-        addSubview(renameField)
-        addSubview(restartButton)
-        addSubview(closeButton)
         addSubview(terminalView)
+        addSubview(titleBar)
+        titleBar.addSubview(titleBarBottomLine)
+        titleBar.addSubview(activityDot)
+        titleBar.addSubview(titleLabel)
+        titleBar.addSubview(renameField)
+        titleBar.addSubview(restartButton)
+        titleBar.addSubview(closeButton)
         updateTitle()
         updateBorder()
+        updateActivityDot()
     }
 
     required init?(coder: NSCoder) {
@@ -137,22 +152,68 @@ final class TerminalPaneView: NSView {
     override func layout() {
         super.layout()
 
-        let chromeHeight: CGFloat = 26
-        restartButton.frame = NSRect(x: 7, y: bounds.height - 22, width: 16, height: 16)
-        closeButton.frame = NSRect(x: restartButton.isHidden ? 7 : 27, y: bounds.height - 22, width: 16, height: 16)
-        let titleX: CGFloat = restartButton.isHidden && closeButton.isHidden ? 30 : (closeButton.frame.maxX + 7)
+        let chromeHeight = DS.Metrics.paneChromeHeight
+        let buttonSize: CGFloat = 18
+        let edgePadding: CGFloat = 8
+
+        titleBar.frame = NSRect(
+            x: 0,
+            y: bounds.height - chromeHeight,
+            width: bounds.width,
+            height: chromeHeight
+        )
+
+        titleBarBottomLine.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: titleBar.bounds.width,
+            height: 1
+        )
+
+        let buttonsHidden = restartButton.isHidden && closeButton.isHidden
+        let dotSize: CGFloat = 6
+        let centerY = floor((chromeHeight - dotSize) / 2) + 1
+
+        activityDot.frame = NSRect(
+            x: edgePadding,
+            y: centerY,
+            width: dotSize,
+            height: dotSize
+        )
+
+        restartButton.frame = NSRect(
+            x: edgePadding,
+            y: floor((chromeHeight - buttonSize) / 2),
+            width: buttonSize,
+            height: buttonSize
+        )
+        closeButton.frame = NSRect(
+            x: restartButton.isHidden ? edgePadding : (restartButton.frame.maxX + 4),
+            y: restartButton.frame.minY,
+            width: buttonSize,
+            height: buttonSize
+        )
+
+        activityDot.isHidden = !buttonsHidden
+
+        let titleX: CGFloat = buttonsHidden
+            ? activityDot.frame.maxX + 8
+            : closeButton.frame.maxX + 8
+
+        let titleHeight: CGFloat = 16
         titleLabel.frame = NSRect(
             x: titleX,
-            y: bounds.height - chromeHeight + 4,
-            width: max(0, bounds.width - titleX - 12),
-            height: 16
+            y: floor((chromeHeight - titleHeight) / 2),
+            width: max(0, titleBar.bounds.width - titleX - edgePadding),
+            height: titleHeight
         )
         renameField.frame = titleLabel.frame.insetBy(dx: -3, dy: -2)
+
         terminalView.frame = NSRect(
-            x: 1,
-            y: 1,
-            width: max(0, bounds.width - 2),
-            height: max(0, bounds.height - chromeHeight - 1)
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: max(0, bounds.height - chromeHeight)
         )
 
         startProcessIfReady()
@@ -243,11 +304,49 @@ final class TerminalPaneView: NSView {
     }
 
     private func updateTitle() {
-        var parts = [paneName, currentFolderName]
+        let attributed = NSMutableAttributedString()
+        attributed.append(NSAttributedString(
+            string: paneName,
+            attributes: [
+                .font: DS.Typography.paneTitle(),
+                .foregroundColor: NSColor.labelColor
+            ]
+        ))
+        attributed.append(NSAttributedString(
+            string: "  ",
+            attributes: [.font: DS.Typography.paneTitle()]
+        ))
+        attributed.append(NSAttributedString(
+            string: currentFolderName,
+            attributes: [
+                .font: DS.Typography.paneTitleMono(),
+                .foregroundColor: NSColor.tertiaryLabelColor
+            ]
+        ))
         if let processStatus {
-            parts.append(processStatus)
+            attributed.append(NSAttributedString(
+                string: "  ·  \(processStatus)",
+                attributes: [
+                    .font: DS.Typography.paneTitle(),
+                    .foregroundColor: NSColor.systemOrange.withAlphaComponent(0.9)
+                ]
+            ))
         }
-        titleLabel.stringValue = parts.joined(separator: " · ")
+        titleLabel.attributedStringValue = attributed
+    }
+
+    private func updateActivityDot() {
+        let color: NSColor
+        if processStatus != nil {
+            color = .systemRed
+        } else if isAlerting {
+            color = .systemOrange
+        } else if isProcessRunning {
+            color = NSColor.systemGreen.withAlphaComponent(0.85)
+        } else {
+            color = NSColor.tertiaryLabelColor
+        }
+        activityDot.layer?.backgroundColor = color.cgColor
     }
 
     private func beginRenaming() {
@@ -299,16 +398,17 @@ final class TerminalPaneView: NSView {
         let width: CGFloat
         if isAlerting {
             color = NSColor.systemOrange
-            width = 2
+            width = 1.5
         } else if isActive {
-            color = .controlAccentColor
-            width = 1
+            color = NSColor.controlAccentColor.withAlphaComponent(0.85)
+            width = 1.5
         } else {
-            color = .separatorColor
+            color = DS.Palette.paneInactiveBorder
             width = 1
         }
         layer?.borderColor = color.cgColor
         layer?.borderWidth = width
+        updateActivityDot()
     }
 }
 
@@ -396,6 +496,67 @@ extension TerminalPaneView: LocalProcessTerminalViewDelegate {
         restartButton.isHidden = false
         updateTitle()
         needsLayout = true
+    }
+}
+
+final class PaneChromeButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false { didSet { updateAppearance() } }
+
+    var symbolName: String = "xmark" {
+        didSet {
+            let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+            image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+                .withSymbolConfiguration(config)
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 4
+        layer?.cornerCurve = .continuous
+        isBordered = false
+        bezelStyle = .smallSquare
+        imagePosition = .imageOnly
+        contentTintColor = NSColor.tertiaryLabelColor
+
+        let config = NSImage.SymbolConfiguration(pointSize: 9, weight: .semibold)
+        image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    private func updateAppearance() {
+        if isHovered {
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+            contentTintColor = .labelColor
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            contentTintColor = NSColor.tertiaryLabelColor
+        }
     }
 }
 
