@@ -10,7 +10,8 @@ final class TileContainerView: NSView {
     private let emptyStateContainer = NSView()
     private let emptyStateIcon = NSImageView()
     private let emptyStatePrimary = NSTextField(labelWithString: "No terminals yet")
-    private let emptyStateSecondary = NSTextField(labelWithString: "")
+    private let emptyStateCaptionPrefix = NSTextField(labelWithString: "Press")
+    private let emptyStateCaptionSuffix = NSTextField(labelWithString: "to add a terminal")
     private let emptyStateShortcut = KeyboardShortcutBadge(text: "⌘T")
     var onSplitModeChanged: ((Bool) -> Void)?
     var onTerminalCountChanged: ((Int) -> Void)?
@@ -441,72 +442,73 @@ final class TileContainerView: NSView {
         emptyStatePrimary.textColor = .secondaryLabelColor
         emptyStatePrimary.alignment = .center
 
-        let secondary = NSMutableAttributedString()
-        secondary.append(NSAttributedString(
-            string: "Press ",
-            attributes: [
-                .font: DS.Typography.emptyStateSecondary(),
-                .foregroundColor: NSColor.tertiaryLabelColor
-            ]
-        ))
-        secondary.append(NSAttributedString(
-            string: " to add a terminal",
-            attributes: [
-                .font: DS.Typography.emptyStateSecondary(),
-                .foregroundColor: NSColor.tertiaryLabelColor
-            ]
-        ))
-        emptyStateSecondary.attributedStringValue = secondary
-        emptyStateSecondary.alignment = .center
+        emptyStateCaptionPrefix.font = DS.Typography.emptyStateSecondary()
+        emptyStateCaptionPrefix.textColor = .tertiaryLabelColor
+        emptyStateCaptionSuffix.font = DS.Typography.emptyStateSecondary()
+        emptyStateCaptionSuffix.textColor = .tertiaryLabelColor
 
         emptyStateContainer.addSubview(emptyStateIcon)
         emptyStateContainer.addSubview(emptyStatePrimary)
+        emptyStateContainer.addSubview(emptyStateCaptionPrefix)
         emptyStateContainer.addSubview(emptyStateShortcut)
-        emptyStateContainer.addSubview(emptyStateSecondary)
+        emptyStateContainer.addSubview(emptyStateCaptionSuffix)
         addSubview(emptyStateContainer)
     }
 
     private func layoutEmptyState() {
-        let containerWidth: CGFloat = 280
         let iconHeight: CGFloat = 38
         let titleHeight: CGFloat = 22
-        let captionHeight: CGFloat = 18
-        let badgeHeight: CGFloat = 22
-        let gap: CGFloat = 8
-        let totalHeight = iconHeight + 16 + titleHeight + 12 + captionHeight + badgeHeight
+        let captionRowHeight: CGFloat = 22
+        let badgeGap: CGFloat = 6
+        let totalHeight = iconHeight + 16 + titleHeight + 14 + captionRowHeight
+
+        emptyStateCaptionPrefix.sizeToFit()
+        emptyStateCaptionSuffix.sizeToFit()
+        emptyStatePrimary.sizeToFit()
+
+        let prefixWidth = ceil(emptyStateCaptionPrefix.frame.width) + 2
+        let suffixWidth = ceil(emptyStateCaptionSuffix.frame.width) + 2
+        let badgeSize = emptyStateShortcut.intrinsicContentSize
+        let rowWidth = prefixWidth + badgeGap + badgeSize.width + badgeGap + suffixWidth
+        let titleWidth = ceil(emptyStatePrimary.frame.width)
+        let containerWidth = max(rowWidth, titleWidth, 220) + 24
+
         emptyStateContainer.frame = NSRect(
-            x: (bounds.width - containerWidth) / 2,
-            y: (bounds.height - totalHeight) / 2,
+            x: floor((bounds.width - containerWidth) / 2),
+            y: floor((bounds.height - totalHeight) / 2),
             width: containerWidth,
             height: totalHeight
         )
 
         let cw = emptyStateContainer.bounds.width
         var y = totalHeight - iconHeight
-        emptyStateIcon.frame = NSRect(x: (cw - 36) / 2, y: y, width: 36, height: iconHeight)
+        emptyStateIcon.frame = NSRect(x: floor((cw - 36) / 2), y: y, width: 36, height: iconHeight)
         y -= (16 + titleHeight)
         emptyStatePrimary.frame = NSRect(x: 0, y: y, width: cw, height: titleHeight)
-        y -= (12 + badgeHeight)
+        y -= (14 + captionRowHeight)
 
-        let badgeWidth = emptyStateShortcut.intrinsicContentSize.width
-        let captionPart1Width = NSString(string: "Press ").size(withAttributes: [.font: DS.Typography.emptyStateSecondary()]).width
-        let captionPart2Width = NSString(string: " to add a terminal").size(withAttributes: [.font: DS.Typography.emptyStateSecondary()]).width
-        let captionLineWidth = captionPart1Width + badgeWidth + captionPart2Width + (gap * 0)
-        let captionX = (cw - captionLineWidth) / 2
+        var x = floor((cw - rowWidth) / 2)
 
-        let badgeY = y + (badgeHeight - badgeHeight) / 2
+        let prefixHeight = ceil(emptyStateCaptionPrefix.frame.height)
+        let suffixHeight = ceil(emptyStateCaptionSuffix.frame.height)
+        let textY = y + floor((captionRowHeight - prefixHeight) / 2)
+
+        emptyStateCaptionPrefix.frame = NSRect(x: x, y: textY, width: prefixWidth, height: prefixHeight)
+        x += prefixWidth + badgeGap
+
         emptyStateShortcut.frame = NSRect(
-            x: captionX + captionPart1Width,
-            y: badgeY,
-            width: badgeWidth,
-            height: badgeHeight
+            x: x,
+            y: y + floor((captionRowHeight - badgeSize.height) / 2),
+            width: badgeSize.width,
+            height: badgeSize.height
         )
+        x += badgeSize.width + badgeGap
 
-        emptyStateSecondary.frame = NSRect(
-            x: 0,
-            y: y + (badgeHeight - captionHeight) / 2,
-            width: cw,
-            height: captionHeight
+        emptyStateCaptionSuffix.frame = NSRect(
+            x: x,
+            y: y + floor((captionRowHeight - suffixHeight) / 2),
+            width: suffixWidth,
+            height: suffixHeight
         )
     }
 
