@@ -7,7 +7,12 @@ final class TileContainerView: NSView {
     private var splitOverlay: TileSplitModeOverlayView?
     private var nodeFrames: [UUID: NSRect] = [:]
     private(set) var activePaneID: UUID?
-    private let emptyStateLabel = NSTextField(labelWithString: "No sessions.\nPress '+' to get started")
+    private let emptyStateContainer = NSView()
+    private let emptyStateIcon = NSImageView()
+    private let emptyStatePrimary = NSTextField(labelWithString: "No terminals yet")
+    private let emptyStateCaptionPrefix = NSTextField(labelWithString: "Press")
+    private let emptyStateCaptionSuffix = NSTextField(labelWithString: "to add a terminal")
+    private let emptyStateShortcut = KeyboardShortcutBadge(text: "⌘T")
     var onSplitModeChanged: ((Bool) -> Void)?
     var onTerminalCountChanged: ((Int) -> Void)?
     var defaultDirectory = ""
@@ -30,7 +35,7 @@ final class TileContainerView: NSView {
         super.init(frame: frameRect)
 
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.backgroundColor = DS.Palette.tileGutter.cgColor
         terminalManager.onRunningCountChanged = { [weak self] count in
             self?.onTerminalCountChanged?(count)
         }
@@ -47,6 +52,11 @@ final class TileContainerView: NSView {
         layoutTileTree()
         splitOverlay?.frame = bounds
         layoutEmptyState()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = DS.Palette.tileGutter.cgColor
     }
 
     func enterSplitMode() {
@@ -238,11 +248,11 @@ final class TileContainerView: NSView {
 
         if animated && window != nil {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.18
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 self.layout(
                     node: root,
-                    in: self.bounds.insetBy(dx: 6, dy: 6),
+                    in: self.bounds.insetBy(dx: DS.Metrics.tileInset, dy: DS.Metrics.tileInset),
                     animated: true,
                     appearingPaneID: appearingPaneID,
                     rebuildHandles: rebuildHandles
@@ -251,7 +261,7 @@ final class TileContainerView: NSView {
         } else {
             layout(
                 node: root,
-                in: bounds.insetBy(dx: 6, dy: 6),
+                in: bounds.insetBy(dx: DS.Metrics.tileInset, dy: DS.Metrics.tileInset),
                 animated: false,
                 appearingPaneID: nil,
                 rebuildHandles: rebuildHandles
@@ -278,7 +288,7 @@ final class TileContainerView: NSView {
                 return
             }
 
-            let targetFrame = frame.insetBy(dx: 3, dy: 3)
+            let targetFrame = frame.insetBy(dx: 1, dy: 1)
             if animated {
                 if paneID == appearingPaneID {
                     pane.alphaValue = 0
@@ -424,31 +434,138 @@ final class TileContainerView: NSView {
     }
 
     private func configureEmptyStateLabel() {
-        emptyStateLabel.font = .systemFont(ofSize: 18, weight: .medium)
-        emptyStateLabel.textColor = .secondaryLabelColor
-        emptyStateLabel.alignment = .center
-        emptyStateLabel.maximumNumberOfLines = 2
-        emptyStateLabel.lineBreakMode = .byWordWrapping
-        emptyStateLabel.isHidden = true
-        addSubview(emptyStateLabel)
+        emptyStateContainer.wantsLayer = true
+        emptyStateContainer.isHidden = true
+
+        let iconConfig = NSImage.SymbolConfiguration(pointSize: 28, weight: .light)
+        emptyStateIcon.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconConfig)
+        emptyStateIcon.contentTintColor = NSColor.tertiaryLabelColor
+        emptyStateIcon.imageScaling = .scaleProportionallyDown
+
+        emptyStatePrimary.font = DS.Typography.emptyStatePrimary()
+        emptyStatePrimary.textColor = .secondaryLabelColor
+        emptyStatePrimary.alignment = .center
+
+        emptyStateCaptionPrefix.font = DS.Typography.emptyStateSecondary()
+        emptyStateCaptionPrefix.textColor = .tertiaryLabelColor
+        emptyStateCaptionSuffix.font = DS.Typography.emptyStateSecondary()
+        emptyStateCaptionSuffix.textColor = .tertiaryLabelColor
+
+        emptyStateContainer.addSubview(emptyStateIcon)
+        emptyStateContainer.addSubview(emptyStatePrimary)
+        emptyStateContainer.addSubview(emptyStateCaptionPrefix)
+        emptyStateContainer.addSubview(emptyStateShortcut)
+        emptyStateContainer.addSubview(emptyStateCaptionSuffix)
+        addSubview(emptyStateContainer)
     }
 
     private func layoutEmptyState() {
-        let size = emptyStateLabel.sizeThatFits(NSSize(width: max(0, bounds.width - 48), height: .greatestFiniteMagnitude))
-        emptyStateLabel.frame = NSRect(
-            x: (bounds.width - size.width) / 2,
-            y: (bounds.height - size.height) / 2,
-            width: size.width,
-            height: size.height
+        let iconHeight: CGFloat = 38
+        let titleHeight: CGFloat = 22
+        let captionRowHeight: CGFloat = 22
+        let badgeGap: CGFloat = 6
+        let totalHeight = iconHeight + 16 + titleHeight + 14 + captionRowHeight
+
+        emptyStateCaptionPrefix.sizeToFit()
+        emptyStateCaptionSuffix.sizeToFit()
+        emptyStatePrimary.sizeToFit()
+
+        let prefixWidth = ceil(emptyStateCaptionPrefix.frame.width) + 2
+        let suffixWidth = ceil(emptyStateCaptionSuffix.frame.width) + 2
+        let badgeSize = emptyStateShortcut.intrinsicContentSize
+        let rowWidth = prefixWidth + badgeGap + badgeSize.width + badgeGap + suffixWidth
+        let titleWidth = ceil(emptyStatePrimary.frame.width)
+        let containerWidth = max(rowWidth, titleWidth, 220) + 24
+
+        emptyStateContainer.frame = NSRect(
+            x: floor((bounds.width - containerWidth) / 2),
+            y: floor((bounds.height - totalHeight) / 2),
+            width: containerWidth,
+            height: totalHeight
+        )
+
+        let cw = emptyStateContainer.bounds.width
+        var y = totalHeight - iconHeight
+        emptyStateIcon.frame = NSRect(x: floor((cw - 36) / 2), y: y, width: 36, height: iconHeight)
+        y -= (16 + titleHeight)
+        emptyStatePrimary.frame = NSRect(x: 0, y: y, width: cw, height: titleHeight)
+        y -= (14 + captionRowHeight)
+
+        var x = floor((cw - rowWidth) / 2)
+
+        let prefixHeight = ceil(emptyStateCaptionPrefix.frame.height)
+        let suffixHeight = ceil(emptyStateCaptionSuffix.frame.height)
+        let textY = y + floor((captionRowHeight - prefixHeight) / 2)
+
+        emptyStateCaptionPrefix.frame = NSRect(x: x, y: textY, width: prefixWidth, height: prefixHeight)
+        x += prefixWidth + badgeGap
+
+        emptyStateShortcut.frame = NSRect(
+            x: x,
+            y: y + floor((captionRowHeight - badgeSize.height) / 2),
+            width: badgeSize.width,
+            height: badgeSize.height
+        )
+        x += badgeSize.width + badgeGap
+
+        emptyStateCaptionSuffix.frame = NSRect(
+            x: x,
+            y: y + floor((captionRowHeight - suffixHeight) / 2),
+            width: suffixWidth,
+            height: suffixHeight
         )
     }
 
     private func updateEmptyState() {
         let isEmpty = tree.isEmpty
-        emptyStateLabel.isHidden = !isEmpty
+        emptyStateContainer.isHidden = !isEmpty
         if isEmpty {
-            addSubview(emptyStateLabel, positioned: .above, relativeTo: nil)
+            addSubview(emptyStateContainer, positioned: .above, relativeTo: nil)
             layoutEmptyState()
         }
+    }
+}
+
+final class KeyboardShortcutBadge: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    init(text: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 5
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 1
+
+        label.stringValue = text
+        label.font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        addSubview(label)
+        applyDynamicColors()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyDynamicColors()
+    }
+
+    private func applyDynamicColors() {
+        layer?.borderColor = NSColor.quaternaryLabelColor.cgColor
+        layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.04).cgColor
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let textSize = label.intrinsicContentSize
+        return NSSize(width: textSize.width + 14, height: 22)
+    }
+
+    override func layout() {
+        super.layout()
+        label.frame = bounds.insetBy(dx: 6, dy: 2)
     }
 }

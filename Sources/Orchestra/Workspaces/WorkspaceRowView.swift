@@ -29,17 +29,18 @@ final class WorkspaceRowView: NSTableCellView {
 
         chromeView.wantsLayer = true
         chromeView.clipsToBounds = true
-        chromeView.layer?.cornerRadius = 5
+        chromeView.layer?.cornerRadius = DS.Metrics.rowCornerRadius
+        chromeView.layer?.cornerCurve = .continuous
         chromeView.layer?.borderWidth = 0
 
-        titleLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        titleLabel.font = DS.Typography.row()
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byTruncatingTail
         let renameGesture = NSClickGestureRecognizer(target: self, action: #selector(beginRenamingFromGesture(_:)))
         renameGesture.numberOfClicksRequired = 2
         titleLabel.addGestureRecognizer(renameGesture)
 
-        renameField.font = .systemFont(ofSize: 13, weight: .regular)
+        renameField.font = DS.Typography.row()
         renameField.maximumLength = 80
         renameField.isHidden = true
         renameField.onCommit = { [weak self] name in
@@ -49,13 +50,14 @@ final class WorkspaceRowView: NSTableCellView {
             self?.cancelRename()
         }
 
-        countBadge.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        countBadge.font = DS.Typography.badge()
         countBadge.alignment = .center
-        countBadge.textColor = .secondaryLabelColor
+        countBadge.textColor = DS.Palette.badgeText
         countBadge.lineBreakMode = .byClipping
         countBadge.wantsLayer = true
-        countBadge.layer?.cornerRadius = 7
-        countBadge.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        countBadge.layer?.cornerRadius = 8
+        countBadge.layer?.cornerCurve = .continuous
+        countBadge.layer?.backgroundColor = DS.Palette.badgeFill.cgColor
 
         configureIconButton(addButton, symbolName: "plus", tooltip: "Add child workspace", action: #selector(addChild(_:)))
         configureIconButton(settingsButton, symbolName: "gearshape", tooltip: "Workspace settings", action: #selector(openSettings(_:)))
@@ -85,7 +87,11 @@ final class WorkspaceRowView: NSTableCellView {
         onDelete = nil
         cancelRename()
         isHovered = false
+        isCurrentlyActive = false
+        applyState()
     }
+
+    private var isCurrentlyActive = false
 
     func configure(
         workspace: Workspace,
@@ -97,6 +103,7 @@ final class WorkspaceRowView: NSTableCellView {
         onDelete: @escaping (Workspace, NSView) -> Void
     ) {
         self.workspace = workspace
+        self.isCurrentlyActive = isActive
         self.onAddChild = onAddChild
         self.onRename = onRename
         self.onSettings = onSettings
@@ -107,21 +114,29 @@ final class WorkspaceRowView: NSTableCellView {
         countBadge.stringValue = "\(workspace.terminalCount)"
         countBadge.isHidden = workspace.terminalCount == 0
         self.canAddChild = canAddChild
-        addButton.contentTintColor = canAddChild ? .labelColor : .disabledControlTextColor
+        addButton.contentTintColor = canAddChild ? .secondaryLabelColor : .tertiaryLabelColor
 
-        if isActive {
-            chromeView.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
-            chromeView.layer?.borderWidth = 1
-            chromeView.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
-            titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        } else {
-            chromeView.layer?.backgroundColor = isHovered ? NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor : NSColor.clear.cgColor
-            chromeView.layer?.borderWidth = 0
-            titleLabel.font = .systemFont(ofSize: 13, weight: .regular)
-        }
-
+        applyState()
         updateButtonVisibility()
         needsLayout = true
+    }
+
+    private func applyState() {
+        if isCurrentlyActive {
+            chromeView.layer?.backgroundColor = DS.Palette.rowActiveFill.cgColor
+            titleLabel.font = DS.Typography.row(weight: .semibold)
+            titleLabel.textColor = DS.Palette.rowActiveText
+            countBadge.layer?.backgroundColor = DS.Palette.badgeActiveFill.cgColor
+            countBadge.textColor = DS.Palette.badgeActiveText
+        } else {
+            chromeView.layer?.backgroundColor = isHovered
+                ? DS.Palette.rowHover.cgColor
+                : NSColor.clear.cgColor
+            titleLabel.font = DS.Typography.row()
+            titleLabel.textColor = .labelColor
+            countBadge.layer?.backgroundColor = DS.Palette.badgeFill.cgColor
+            countBadge.textColor = DS.Palette.badgeText
+        }
     }
 
     override func layout() {
@@ -189,6 +204,11 @@ final class WorkspaceRowView: NSTableCellView {
         super.mouseDown(with: event)
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyState()
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
 
@@ -208,16 +228,12 @@ final class WorkspaceRowView: NSTableCellView {
 
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
-        if chromeView.layer?.borderWidth == 0 {
-            chromeView.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
-        }
+        applyState()
     }
 
     override func mouseExited(with event: NSEvent) {
         isHovered = false
-        if chromeView.layer?.borderWidth == 0 {
-            chromeView.layer?.backgroundColor = NSColor.clear.cgColor
-        }
+        applyState()
     }
 
     private func visibleChromeFrame() -> NSRect {
@@ -236,14 +252,19 @@ final class WorkspaceRowView: NSTableCellView {
     }
 
     private func configureIconButton(_ button: NSButton, symbolName: String, tooltip: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: tooltip)
+        let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: tooltip)?
+            .withSymbolConfiguration(config)
         button.imagePosition = .imageOnly
         button.isBordered = false
         button.bezelStyle = .regularSquare
         button.target = self
         button.action = action
         button.toolTip = tooltip
-        button.contentTintColor = .labelColor
+        button.contentTintColor = .secondaryLabelColor
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 4
+        button.layer?.cornerCurve = .continuous
     }
 
     private func updateButtonVisibility() {

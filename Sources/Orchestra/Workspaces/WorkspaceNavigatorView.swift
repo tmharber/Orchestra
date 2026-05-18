@@ -1,9 +1,9 @@
 import AppKit
 
-final class WorkspaceNavigatorView: NSView {
+final class WorkspaceNavigatorView: NSVisualEffectView {
     private let store: WorkspaceStore
     private let titleLabel = NSTextField(labelWithString: "Workspaces")
-    private let addRootButton = NSButton()
+    private let addRootButton = HoverIconButton(style: .sidebarHeader, symbolName: "plus")
     private let scrollView = NSScrollView()
     private let outlineView = NSOutlineView()
     private let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("WorkspaceColumn"))
@@ -17,15 +17,17 @@ final class WorkspaceNavigatorView: NSView {
     init(store: WorkspaceStore) {
         self.store = store
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        material = .sidebar
+        blendingMode = .behindWindow
+        state = .followsWindowActiveState
 
-        titleLabel.font = .systemFont(ofSize: 18, weight: .bold)
-        titleLabel.textColor = .labelColor
+        titleLabel.attributedStringValue = .tracked(
+            "Workspaces",
+            font: DS.Typography.sidebarTitle(),
+            color: .labelColor,
+            tracking: -0.3
+        )
 
-        addRootButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add workspace")
-        addRootButton.imagePosition = .imageOnly
-        addRootButton.isBordered = false
         addRootButton.target = self
         addRootButton.action = #selector(addRoot(_:))
         addRootButton.toolTip = "Add workspace"
@@ -34,9 +36,9 @@ final class WorkspaceNavigatorView: NSView {
         outlineView.outlineTableColumn = column
         column.minWidth = 0
         outlineView.headerView = nil
-        outlineView.rowHeight = 30
+        outlineView.rowHeight = DS.Metrics.rowHeight
         outlineView.intercellSpacing = NSSize(width: 0, height: 2)
-        outlineView.indentationPerLevel = 12
+        outlineView.indentationPerLevel = 14
         outlineView.selectionHighlightStyle = .none
         outlineView.backgroundColor = .clear
         outlineView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -66,24 +68,34 @@ final class WorkspaceNavigatorView: NSView {
     override func layout() {
         super.layout()
 
-        let headerHeight: CGFloat = 52
-        let titleHeight: CGFloat = 22
-        let buttonSize: CGFloat = 24
-        let headerTopPadding: CGFloat = 14
-        let headerY = bounds.height - buttonSize - headerTopPadding
+        let inset = DS.Metrics.sidebarInset
+        let headerHeight = DS.Metrics.sidebarHeaderHeight
+        let buttonSize = DS.Metrics.sidebarHeaderButtonSize
+        let titleHeight = DS.Metrics.sidebarHeaderTitleHeight
+        let titleBaseline = DS.Metrics.sidebarHeaderTitleBaseline
+        let buttonGutter: CGFloat = 12
+        let buttonRightAdjust: CGFloat = 4
+
         titleLabel.frame = NSRect(
-            x: 14,
-            y: headerY + floor((buttonSize - titleHeight) / 2),
-            width: max(0, bounds.width - 14 - buttonSize - 12),
+            x: inset,
+            y: bounds.height - titleBaseline - titleHeight,
+            width: max(0, bounds.width - inset - buttonSize - buttonGutter),
             height: titleHeight
         )
+
         addRootButton.frame = NSRect(
-            x: bounds.width - buttonSize - 10,
-            y: headerY,
+            x: bounds.width - buttonSize - inset + buttonRightAdjust,
+            y: titleLabel.frame.midY - buttonSize / 2,
             width: buttonSize,
             height: buttonSize
         )
-        scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - headerHeight))
+
+        scrollView.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: max(0, bounds.height - headerHeight)
+        )
         let contentWidth = max(0, scrollView.contentView.bounds.width)
         scrollView.contentView.bounds.origin.x = 0
         outlineView.frame.size.width = contentWidth

@@ -7,6 +7,10 @@ final class TileResizeHandle: NSView {
     private let onResize: (UUID, CGFloat) -> Void
     private let onResizeEnded: () -> Void
     private let minimumPaneSize = NSSize(width: 200, height: 100)
+    private let indicator = NSView()
+    private var trackingArea: NSTrackingArea?
+    private var isHovered = false
+    private var isDragging = false
 
     init(
         axis: SplitAxis,
@@ -23,11 +27,79 @@ final class TileResizeHandle: NSView {
         super.init(frame: .zero)
 
         wantsLayer = true
-        layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.12).cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        indicator.wantsLayer = true
+        indicator.layer?.cornerRadius = 1
+        indicator.layer?.cornerCurve = .continuous
+        indicator.layer?.backgroundColor = NSColor.clear.cgColor
+        addSubview(indicator)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layout() {
+        super.layout()
+        let thickness: CGFloat = 2
+        switch axis {
+        case .horizontal:
+            indicator.frame = NSRect(
+                x: (bounds.width - thickness) / 2,
+                y: 0,
+                width: thickness,
+                height: bounds.height
+            )
+        case .vertical:
+            indicator.frame = NSRect(
+                x: 0,
+                y: (bounds.height - thickness) / 2,
+                width: bounds.width,
+                height: thickness
+            )
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        trackingArea = area
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        applyHoverState()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        applyHoverState()
+    }
+
+    private func applyHoverState() {
+        let highlighted = isHovered || isDragging
+        let target = highlighted
+            ? NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
+            : NSColor.clear.cgColor
+        guard let layer = indicator.layer else { return }
+
+        let anim = CABasicAnimation(keyPath: "backgroundColor")
+        anim.fromValue = layer.backgroundColor
+        anim.toValue = target
+        anim.duration = 0.12
+        anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(anim, forKey: "backgroundColor")
+        layer.backgroundColor = target
     }
 
     override func resetCursorRects() {
@@ -48,20 +120,28 @@ final class TileResizeHandle: NSView {
             return
         }
 
+        isDragging = true
+        applyHoverState()
         updateRatio(with: event, parentFrame: parentFrame, in: container)
 
         while true {
             guard let nextEvent = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp, .keyDown]) else {
+                isDragging = false
+                applyHoverState()
                 return
             }
 
             if nextEvent.type == .leftMouseUp {
+                isDragging = false
+                applyHoverState()
                 onResizeEnded()
                 return
             }
 
             if nextEvent.type == .keyDown {
                 guard nextEvent.keyCode != 53 else {
+                    isDragging = false
+                    applyHoverState()
                     onResizeEnded()
                     return
                 }
